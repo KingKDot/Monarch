@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Monarch</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script>
+    async function loadCaptcha(prefix) {
+      const res = await fetch('/captcha/new');
+      const data = await res.json();
+      document.getElementById(prefix + '_captcha_id').value = data.id;
+      document.getElementById(prefix + '_captcha_img').src = '/captcha/' + data.id + '.png';
+    }
+
+    function setupDrop(zoneId) {
+      const zone = document.getElementById(zoneId);
+      if (!zone) return;
+      zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+      zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+      zone.addEventListener('drop', e => {
+        e.preventDefault(); zone.classList.remove('drag-over');
+        const inp = zone.querySelector('input[type=file]');
+        if (inp && e.dataTransfer.files.length) {
+          inp.files = e.dataTransfer.files;
+          updateLabel(inp);
+        }
+      });
+      const inp = zone.querySelector('input[type=file]');
+      if (inp) inp.addEventListener('change', () => updateLabel(inp));
+    }
+
+    function updateLabel(inp) {
+      const lbl = document.getElementById('drop-label');
+      if (lbl && inp.files.length) lbl.textContent = inp.files[0].name;
+    }
+
+    function setupUpload() {
+      const form = document.getElementById('scan-form');
+      if (!form) return;
+      form.addEventListener('submit', e => {
+        e.preventDefault();
+        const btn = document.getElementById('scan-btn');
+        const prog = document.getElementById('upload-progress');
+        const bar  = document.getElementById('upload-progress-bar');
+        const lbl  = document.getElementById('upload-progress-label');
+
+        btn.disabled = true;
+        btn.textContent = 'Uploading…';
+        prog.style.display = 'block';
+
+        const xhr = new XMLHttpRequest();
+        xhr.upload.addEventListener('progress', ev => {
+          if (ev.lengthComputable) {
+            const pct = Math.round(ev.loaded / ev.total * 100);
+            bar.style.width = pct + '%';
+            lbl.textContent = pct + '%';
+          }
+        });
+        xhr.addEventListener('load', () => {
+          bar.style.width = '100%';
+          if (xhr.status < 400 && xhr.responseURL) {
+            window.location.href = xhr.responseURL;
+          } else {
+            btn.disabled = false;
+            btn.textContent = 'Scan file';
+            prog.style.display = 'none';
+            lbl.textContent = 'Upload failed — try again';
+            lbl.style.color = '#fca5a5';
+            prog.style.display = 'block';
+          }
+        });
+        xhr.addEventListener('error', () => {
+          btn.disabled = false;
+          btn.textContent = 'Scan file';
+          prog.style.display = 'none';
+        });
+        xhr.open('POST', '/scan');
+        xhr.send(new FormData(form));
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      setupDrop('drop-zone');
+      setupUpload();
+    });
+  </script>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-brand">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Monarch
+    </a>
+    <div class="nav-links">
+      <a href="/hash" class="nav-link">Hash lookup</a>
+      {{if .AccountID}}
+        <form method="post" action="/logout" style="display:contents;">
+          <button type="submit" class="nav-link">Logout</button>
+        </form>
+      {{else}}
+        <a href="/signup" class="nav-link">Sign up</a>
+        <a href="/login" class="btn btn-primary" style="font-size:0.8rem; padding:0.35rem 0.9rem;">Login</a>
+      {{end}}
+    </div>
+  </div>
+</nav>
+
+<main class="main">
+
+  {{if .Error}}
+  <div class="alert-error fade">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    {{.Error}}
+  </div>
+  {{end}}
+
+  {{if .AccountID}}
+  <div class="home-grid">
+
+    {{/* ── Upload form ── */}}
+    <div class="card fade">
+      <div class="card-header">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
+        Scan a file
+      </div>
+      <div class="card-body">
+        <p class="text-muted text-small" style="margin-bottom:1.25rem;">Submit a file to scan across your AV environments. Max 35 MB.</p>
+        <form id="scan-form" method="post" action="/scan" enctype="multipart/form-data">
+          <div class="drop-zone" id="drop-zone" style="margin-bottom:1rem;">
+            <input type="file" name="file" required />
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2a2a38" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 0.6rem;"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
+            <div class="drop-label" id="drop-label">Drop a file or click to browse</div>
+            <div class="drop-hint">Any file type · up to 35 MB</div>
+          </div>
+          <div class="upload-progress" id="upload-progress">
+            <div class="upload-progress-track">
+              <div class="upload-progress-bar" id="upload-progress-bar"></div>
+            </div>
+            <div class="upload-progress-label" id="upload-progress-label">Uploading…</div>
+          </div>
+          {{if .RequireCaptcha}}
+          <input type="hidden" id="scan_captcha_id" name="captcha_id" />
+          <div style="margin-bottom:1rem;">
+            <div class="form-label" style="margin-bottom:0.5rem;">Captcha</div>
+            <div class="captcha-row">
+              <img id="scan_captcha_img" class="captcha-img" alt="captcha" />
+              <button type="button" class="btn btn-ghost" onclick="loadCaptcha('scan')" style="font-size:0.78rem; padding:0.35rem 0.75rem;">Refresh</button>
+            </div>
+            <input class="input" type="text" name="captcha_solution" placeholder="Enter captcha text" style="margin-top:0.5rem;" />
+          </div>
+          {{end}}
+          <button type="submit" id="scan-btn" class="btn btn-primary btn-full" style="margin-top:0.75rem;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Scan file
+          </button>
+        </form>
+        {{if .RequireCaptcha}}<script>loadCaptcha('scan');</script>{{end}}
+      </div>
+    </div>
+
+    {{/* ── Recent scans ── */}}
+    <div class="card fade" style="overflow:hidden;">
+      <div class="card-header">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Recent scans
+      </div>
+      {{if .RecentScans}}
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Status</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .RecentScans}}
+            <tr class="{{if eq .Status "malware"}}row-malware{{else if eq .Status "clean"}}row-clean{{else if eq .Status "error"}}row-error{{end}}">
+              <td class="td-name">
+                <a href="/scan/{{.ID}}" class="link" style="font-weight:500;">{{.Filename}}</a>
+              </td>
+              <td>
+                <span class="badge {{if eq .Status "malware"}}badge-malware{{else if eq .Status "clean"}}badge-clean{{else if eq .Status "error"}}badge-error{{else if eq .Status "scanning"}}badge-scanning{{else if eq .Status "queued"}}badge-queued{{else}}badge-default{{end}}">{{.Status}}</span>
+              </td>
+              <td class="td-dim">{{.Created}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{else}}
+      <div class="card-body" style="text-align:center; padding:3rem 1.5rem;">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2a2a38" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 0.75rem;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <p class="text-muted text-small">No scans yet.</p>
+      </div>
+      {{end}}
+    </div>
+
+  </div>
+  {{else}}
+  <div class="hero fade">
+    <div class="hero-icon">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    </div>
+    <h1>Monarch</h1>
+    <p>File scanning across isolated AV environments.</p>
+    <div class="hero-actions">
+      <a href="/login" class="btn btn-primary">Login</a>
+      <a href="/signup" class="btn btn-ghost">Create account</a>
+    </div>
+  </div>
+  {{end}}
+
+</main>
+</body>
+</html>

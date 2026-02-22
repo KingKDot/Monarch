@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Monarch — Admin</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-brand">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Monarch
+    </a>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Home</a>
+    </div>
+  </div>
+</nav>
+
+<main class="main-lg">
+
+  <div class="fade">
+    <p style="font-size:1rem; font-weight:700; color:#f4f4f5; margin-bottom:0.15rem;">Admin Panel</p>
+    <p class="text-muted text-small">Recent scans across all accounts.</p>
+  </div>
+
+  <div class="card fade" style="overflow:hidden;">
+    <div class="card-header">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      All Scans
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Scan ID</th>
+            <th>Account</th>
+            <th>Status</th>
+            <th>File</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Items}}
+          <tr class="{{if eq .Status "malware"}}row-malware{{else if eq .Status "clean"}}row-clean{{else if eq .Status "error"}}row-error{{end}}">
+            <td><a href="/scan/{{.ID}}" class="td-mono">{{.ID}}</a></td>
+            <td class="text-muted">{{.Account}}</td>
+            <td>
+              <span class="{{if eq .Status "malware"}}badge badge-malware{{else if eq .Status "clean"}}badge badge-clean{{else if eq .Status "error"}}badge badge-error{{else}}badge badge-default{{end}}">{{.Status}}</span>
+            </td>
+            <td class="td-name" style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{.Filename}}</td>
+            <td class="td-dim">{{.Created}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+</body>
+</html>

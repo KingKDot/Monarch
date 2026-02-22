@@ -1,0 +1,67 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: monarch
+      POSTGRES_USER: monarch
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-monarch}
+    ports:
+      - "5432:5432"
+    volumes:
+      - monarch_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monarch -d monarch"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MONARCH_LISTEN: ":8080"
+      MONARCH_DATABASE_URL: "postgres://monarch:${POSTGRES_PASSWORD:-monarch}@db:5432/monarch?sslmode=disable"
+      MONARCH_AV_CONFIG: "/etc/monarch/avs.json"
+      MONARCH_STORAGE_DIR: "/var/lib/monarch/storage"
+
+      # REQUIRED: WinRM credentials used to connect to each Windows AV VM.
+      MONARCH_WINRM_USER: ${MONARCH_WINRM_USER}
+      MONARCH_WINRM_PASS: ${MONARCH_WINRM_PASS}
+      MONARCH_WINRM_PORT: ${MONARCH_WINRM_PORT:-5985}
+      MONARCH_WINRM_HTTPS: ${MONARCH_WINRM_HTTPS:-false}
+      MONARCH_WINRM_INSECURE: ${MONARCH_WINRM_INSECURE:-true}
+
+      # Recommended for stable logins across restarts.
+      MONARCH_COOKIE_SECRET: ${MONARCH_COOKIE_SECRET}
+
+      # Optional admin panel basic auth.
+      MONARCH_ADMIN_USER: ${MONARCH_ADMIN_USER:-}
+      MONARCH_ADMIN_PASS: ${MONARCH_ADMIN_PASS:-}
+
+      # Captcha toggles.
+      MONARCH_CAPTCHA_AUTH: ${MONARCH_CAPTCHA_AUTH:-true}
+      MONARCH_CAPTCHA_SCAN: ${MONARCH_CAPTCHA_SCAN:-false}
+      MONARCH_CAPTCHA_THRESHOLD: ${MONARCH_CAPTCHA_THRESHOLD:-10}
+      MONARCH_CAPTCHA_WINDOW: ${MONARCH_CAPTCHA_WINDOW:-2m}
+
+      # Limits.
+      MONARCH_MAX_UPLOAD_BYTES: ${MONARCH_MAX_UPLOAD_BYTES:-36700160}
+      MONARCH_SCAN_WAIT: ${MONARCH_SCAN_WAIT:-15s}
+      MONARCH_WORKERS: ${MONARCH_WORKERS:-2}
+
+      # If you terminate TLS at a reverse proxy, set these appropriately.
+      MONARCH_SECURE_COOKIES: ${MONARCH_SECURE_COOKIES:-false}
+      MONARCH_PUBLIC_BASE_URL: ${MONARCH_PUBLIC_BASE_URL:-}
+    ports:
+      - "8080:8080"
+    volumes:
+      # Provide your AV VM target list.
+      - ./avs.json:/etc/monarch/avs.json:ro
+      # Store uploaded files + per-scan working dirs.
+      - ./storage:/var/lib/monarch/storage
+
+volumes:
+  monarch_pg:

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Monarch</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script>
+    function isTerminal(s) { return s==='clean'||s==='malware'||s==='error'; }
+    function dotClass(s) {
+      s = (s||'').toLowerCase();
+      if (s==='malware'||s==='error') return 'dot dot-malware';
+      if (s==='clean')   return 'dot dot-clean';
+      if (s==='scanning'||s==='pending') return 'dot dot-scanning';
+      return 'dot dot-queued';
+    }
+    function badgeClass(s) {
+      s = (s||'').toLowerCase();
+      if (s==='malware'||s==='error') return 'badge badge-malware';
+      if (s==='clean')   return 'badge badge-clean';
+      if (s==='scanning') return 'badge badge-scanning';
+      if (s==='pending')  return 'badge badge-pending';
+      return 'badge badge-queued';
+    }
+    function rowClass(s) {
+      s = (s||'').toLowerCase();
+      if (s==='malware') return 'row-malware';
+      if (s==='clean')   return 'row-clean';
+      if (s==='error')   return 'row-error';
+      return '';
+    }
+    function renderResults(results) {
+      const body = document.getElementById('results-body');
+      if (!body) return;
+      body.innerHTML = '';
+      for (const r of results||[]) {
+        const tr = document.createElement('tr');
+        tr.className = rowClass(r.status);
+        const del = r.deleted == null ? '\u2014' : String(r.deleted);
+        const upd = (r.updated_at||'').replace('T',' ').slice(0,19);
+        tr.innerHTML =
+          '<td class="td-name">' + (r.av||'') + '</td>' +
+          '<td><span class="' + badgeClass(r.status) + '">' + (r.status||'') + '</span></td>' +
+          '<td>' + del + '</td>' +
+          '<td class="td-dim">' + upd + '</td>';
+        body.appendChild(tr);
+      }
+    }
+    function setTopbar(visible) {
+      const tb = document.getElementById('m-topbar');
+      if (!tb) return;
+      if (visible) tb.classList.remove('done');
+      else tb.classList.add('done');
+    }
+    async function pollScan(id) {
+      try {
+        const res = await fetch('/api/scan/' + id, {cache:'no-store'});
+        if (!res.ok) return;
+        const data = await res.json();
+        const badge = document.getElementById('scan-status');
+        const dot   = document.getElementById('scan-dot');
+        if (badge && data.status) { badge.textContent = data.status; badge.className = badgeClass(data.status); }
+        if (dot   && data.status) { dot.className = dotClass(data.status); }
+        if (data.results) renderResults(data.results);
+        if (isTerminal(data.status)) {
+          clearInterval(window.__poll);
+          setTopbar(false);
+          const msg = document.getElementById('scan-msg');
+          if (msg) msg.style.display = 'none';
+        }
+      } catch(e) {}
+    }
+    function startPolling(id) {
+      setTopbar(true);
+      pollScan(id);
+      window.__poll = setInterval(() => pollScan(id), 1000);
+    }
+  </script>
+</head>
+<body>
+
+<div id="m-topbar"><div id="m-topbar-inner"></div></div>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-brand">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Monarch
+    </a>
+    <div class="nav-links">
+      <a href="/hash/{{.SHA256}}" class="nav-link">Hash</a>
+      <a href="/api/scan/{{.ScanID}}" class="nav-link">JSON</a>
+      <a href="/" class="nav-link">Home</a>
+    </div>
+  </div>
+</nav>
+
+<main class="main">
+
+  <div class="card fade">
+    <div class="card-body" style="display:flex; flex-direction:column; gap:0.5rem;">
+      <div style="display:flex; align-items:center; gap:0.6rem;">
+        <span id="scan-dot" class="{{if eq .Status "clean"}}dot dot-clean{{else if eq .Status "malware"}}dot dot-malware{{else if eq .Status "error"}}dot dot-error{{else}}dot dot-scanning{{end}}"></span>
+        <span id="scan-status" class="{{if eq .Status "clean"}}badge badge-clean{{else if eq .Status "malware"}}badge badge-malware{{else if eq .Status "error"}}badge badge-error{{else if eq .Status "scanning"}}badge badge-scanning{{else}}badge badge-pending{{end}}">{{.Status}}</span>
+      </div>
+      <div style="font-size:0.9rem; font-weight:600; color:#e4e4e7;">{{.Filename}}</div>
+      <div class="mono text-muted" style="font-size:0.72rem;">{{.SHA256}}</div>
+    </div>
+  </div>
+
+  {{if and (ne .Status "clean") (ne .Status "malware") (ne .Status "error")}}
+  <div id="scan-msg" class="scan-banner fade">
+    <span class="spinner"></span>
+    <div>
+      <div class="scan-banner-text">Scan in progress</div>
+      <div class="scan-banner-sub">Results update automatically</div>
+    </div>
+  </div>
+  {{end}}
+
+  <div class="card fade" style="overflow:hidden;">
+    <div class="card-header">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      AV Results
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Engine</th>
+            <th>Result</th>
+            <th>Deleted</th>
+            <th>Updated</th>
+          </tr>
+        </thead>
+        <tbody id="results-body">
+          {{range .Results}}
+          <tr class="{{if eq .Status "malware"}}row-malware{{else if eq .Status "clean"}}row-clean{{else if eq .Status "error"}}row-error{{end}}">
+            <td class="td-name">{{.AV}}</td>
+            <td>
+              <span class="{{if eq .Status "malware"}}badge badge-malware{{else if eq .Status "clean"}}badge badge-clean{{else if eq .Status "error"}}badge badge-error{{else}}badge badge-default{{end}}">{{.Status}}</span>
+            </td>
+            <td>{{if .Deleted}}{{.Deleted}}{{else}}&mdash;{{end}}</td>
+            <td class="td-dim">{{.Updated}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  const _s = '{{.Status}}';
+  if (isTerminal(_s)) setTopbar(false);
+  else startPolling('{{.ScanID}}');
+</script>
+</body>
+</html>

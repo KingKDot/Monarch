@@ -1,0 +1,8 @@
+[
+  {
+    "Antivirus": "Defender",
+    "IP": "127.0.0.1",
+    "ScriptLocation": "C:\\Monarch\\scripts\\scan.ps1",
+    "RemoteWorkDir": "C:\\Monarch\\work"
+  }
+]

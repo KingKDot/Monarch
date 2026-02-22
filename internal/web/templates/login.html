@@ -1,0 +1,74 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Monarch — Login</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script>
+    async function loadCaptcha(prefix) {
+      const res = await fetch('/captcha/new');
+      const data = await res.json();
+      document.getElementById(prefix + '_captcha_id').value = data.id;
+      document.getElementById(prefix + '_captcha_img').src = '/captcha/' + data.id + '.png';
+    }
+  </script>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="nav-brand">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      Monarch
+    </a>
+    <div class="nav-links">
+      <a href="/signup" class="nav-link">Sign up</a>
+    </div>
+  </div>
+</nav>
+
+<main class="main-sm">
+
+  {{if .Error}}
+  <div class="alert-error fade">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    {{.Error}}
+  </div>
+  {{end}}
+
+  <div class="card fade">
+    <div class="card-body">
+      <p style="font-size:1rem; font-weight:700; color:#f4f4f5; margin-bottom:0.25rem;">Login</p>
+      <p class="text-muted text-small" style="margin-bottom:1.5rem;">Enter your account ID and password.</p>
+      <form method="post" action="/login" style="display:flex; flex-direction:column; gap:1rem;">
+        <div class="form-group">
+          <label class="form-label">Account ID</label>
+          <input class="input" type="text" name="account_id" placeholder="Your account ID" required autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input class="input" type="password" name="password" placeholder="Password" required autocomplete="current-password" />
+        </div>
+        {{if .RequireCaptcha}}
+        <div class="form-group">
+          <label class="form-label">Captcha</label>
+          <input type="hidden" id="login_captcha_id" name="captcha_id" />
+          <div class="captcha-row">
+            <img id="login_captcha_img" class="captcha-img" alt="captcha" />
+            <button type="button" class="btn btn-ghost" onclick="loadCaptcha('login')" style="font-size:0.78rem;">Refresh</button>
+          </div>
+          <input class="input" type="text" name="captcha_solution" placeholder="Enter captcha text" />
+        </div>
+        {{end}}
+        <button type="submit" class="btn btn-primary btn-full">Login</button>
+      </form>
+      {{if .RequireCaptcha}}<script>loadCaptcha('login');</script>{{end}}
+    </div>
+  </div>
+
+  <p class="text-center text-muted text-small">No account? <a href="/signup" class="link">Sign up</a></p>
+
+</main>
+</body>
+</html>
