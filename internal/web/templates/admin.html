@@ -20,19 +20,155 @@
   </div>
 </nav>
 
-<main class="main-lg">
+<main class="main-admin">
 
   <div class="fade">
     <p style="font-size:1rem; font-weight:700; color:#f4f4f5; margin-bottom:0.15rem;">Admin Panel</p>
-    <p class="text-muted text-small">Recent scans across all accounts.</p>
+    <p class="text-muted text-small">Stats, users, and recent scans across all accounts.</p>
   </div>
 
-  <div class="card fade" style="overflow:hidden;">
-    <div class="card-header">
+  <div class="admin-shell">
+    <aside class="admin-sidebar fade">
+      <div class="card" style="overflow:hidden;">
+        <div class="card-header">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+          Sections
+        </div>
+        <div class="admin-nav">
+          <a class="nav-link" href="#overview">Overview <span class="text-muted">30d</span></a>
+          <a class="nav-link" href="#trend">Trend <span class="text-muted">30d</span></a>
+          <a class="nav-link" href="#users">Users <span class="text-muted">top</span></a>
+          <a class="nav-link" href="#scans">Scans <span class="text-muted">latest</span></a>
+        </div>
+      </div>
+    </aside>
+
+    <div style="display:flex; flex-direction:column; gap:0.875rem;">
+
+  {{if .Stats}}
+  <details id="overview" class="card fade collapse" open style="overflow:hidden;">
+    <summary class="card-header">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M19 9l-5 5-4-4-3 3"/></svg>
+      Overview (last 30 days)
+    </summary>
+    <div class="collapse-body" style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            {{range .Stats}}<th>{{.Label}}</th>{{end}}
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            {{range .Stats}}<td class="td-mono">{{.Value}}</td>{{end}}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {{end}}
+
+  {{if .Series}}
+  <details id="trend" class="card fade collapse" open style="overflow:hidden;">
+    <summary class="card-header">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Scans per day (last 30 days)
+    </summary>
+    <div class="collapse-body" style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Day</th>
+            <th>Count</th>
+            <th style="width:55%;">Trend</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Series}}
+          <tr>
+            <td class="text-muted">{{.Day.Format "Jan 02"}}</td>
+            <td class="td-mono">{{.Count}}</td>
+            <td>
+              <div class="upload-progress-track" style="height:6px;">
+                {{if gt $.SeriesMax 0}}
+                  <div class="upload-progress-bar" style="height:6px; width: calc({{.Count}} * 100% / {{$.SeriesMax}});"></div>
+                {{else}}
+                  <div class="upload-progress-bar" style="height:6px; width:0%;"></div>
+                {{end}}
+              </div>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {{end}}
+
+  {{if .TopUsers}}
+  <details id="users" class="card fade collapse" open style="overflow:hidden;">
+    <summary class="card-header">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      Most active users (last 30 days)
+    </summary>
+    <div class="collapse-body" style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Account</th>
+            <th>Status</th>
+            <th>Credits</th>
+            <th>Scans (30d)</th>
+            <th>Last scan</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .TopUsers}}
+          <tr>
+            <td class="td-mono">{{.Account}}</td>
+            <td>
+              {{if .Banned}}
+                <span class="badge badge-error">banned</span>
+              {{else}}
+                <span class="badge badge-clean">active</span>
+              {{end}}
+            </td>
+            <td class="td-mono">{{.CreditsBalance}}</td>
+            <td class="td-mono">{{.Scans30d}}</td>
+            <td class="td-dim">
+              {{if .LastScan}}{{.LastScan.Format "Jan 2, 2006 15:04"}}{{else}}—{{end}}
+            </td>
+            <td style="white-space:nowrap;">
+              {{if .Banned}}
+                <form method="post" action="/admin/user/{{.Account}}/unban" style="display:inline-flex; gap:0.35rem; align-items:center;">
+                  <button type="submit" class="btn btn-ghost" style="font-size:0.78rem;">Unban</button>
+                </form>
+              {{else}}
+                <form method="post" action="/admin/user/{{.Account}}/ban" style="display:inline-flex; gap:0.35rem; align-items:center;">
+                  <input class="input" type="text" name="reason" placeholder="Ban reason (optional)" style="height:30px; width:180px; font-size:0.78rem;" />
+                  <button type="submit" class="btn btn-ghost" style="font-size:0.78rem;">Ban</button>
+                </form>
+              {{end}}
+              <form method="post" action="/admin/user/{{.Account}}/credits" style="display:inline-flex; gap:0.35rem; align-items:center; margin-left:0.35rem;">
+                <input class="input" type="text" name="delta" placeholder="Δ credits (e.g. 10 or -5)" style="height:30px; width:175px; font-size:0.78rem;" />
+                <button type="submit" class="btn btn-ghost" style="font-size:0.78rem;">Apply</button>
+              </form>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {{end}}
+
+  <details id="scans" class="card fade collapse" open style="overflow:hidden;">
+    <summary class="card-header">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
       All Scans
-    </div>
-    <div style="overflow-x:auto;">
+    </summary>
+    <div class="collapse-body" style="overflow-x:auto;">
       <table class="data-table">
         <thead>
           <tr>
@@ -57,6 +193,9 @@
           {{end}}
         </tbody>
       </table>
+    </div>
+  </details>
+
     </div>
   </div>
 

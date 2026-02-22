@@ -60,6 +60,10 @@ On the machine/VM running Monarch, create `avs.json` next to `docker-compose.yml
 
    - `http://localhost:8080`
 
+Admin panel (optional):
+- `/admin/` is protected by HTTP Basic Auth using `MONARCH_ADMIN_USER` / `MONARCH_ADMIN_PASS`.
+- The `/login` form is for normal users and requires the per-user **Account ID** created via `/signup`.
+
 ## 4) Do a safe test (EICAR)
 
 Use the standard EICAR test string (commonly detected by AV) to validate deletion behavior.

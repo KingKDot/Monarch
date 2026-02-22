@@ -2,9 +2,12 @@ package web
 
 import (
 	"embed"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -60,6 +63,139 @@ func NewRouter(cfg RouterConfig) (http.Handler, error) {
 		}
 	}
 
+	type scanResultRow struct {
+		AV        string
+		Status    string
+		Deleted   *bool
+		Detection string
+		Updated   time.Time
+	}
+
+	parseThreatName := func(msg string) string {
+		msg = strings.TrimSpace(msg)
+		if msg == "" {
+			return ""
+		}
+		lines := strings.Split(msg, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			lower := strings.ToLower(line)
+			if strings.HasPrefix(lower, "threat name") || strings.HasPrefix(lower, "name") {
+				parts := strings.SplitN(line, ":", 2)
+				if len(parts) == 2 {
+					return strings.TrimSpace(parts[1])
+				}
+			}
+		}
+		return ""
+	}
+
+	detectionFromRaw := func(raw any) string {
+		if raw == nil {
+			return ""
+		}
+		b, _ := json.Marshal(raw)
+		var parsed struct {
+			ThreatName   string `json:"threat_name"`
+			EventMessage string `json:"event_message"`
+			ResultOut    string `json:"result_out"`
+			ScriptOut    string `json:"script_out"`
+		}
+		if err := json.Unmarshal(b, &parsed); err != nil {
+			return ""
+		}
+		det := strings.TrimSpace(parsed.ThreatName)
+		if det == "" {
+			det = parseThreatName(parsed.EventMessage)
+		}
+		return det
+	}
+
+	type recentScan struct {
+		ID        string
+		Status    string
+		Filename  string
+		SHA256    string
+		Detection string
+		Created   string
+	}
+
+	loadRecentScans := func(c *gin.Context, accountID string) []recentScan {
+		var recentScans []recentScan
+		rows, err := cfg.Database.Query(c, `
+SELECT s.id, s.status, s.original_filename, s.sha256, s.created_at,
+       (SELECT sr.raw_json FROM scan_results sr WHERE sr.scan_id=s.id AND sr.status='malware' ORDER BY sr.updated_at DESC LIMIT 1) AS raw_json
+FROM scans s
+JOIN users u ON u.id = s.user_id
+WHERE u.account_id = $1
+ORDER BY s.created_at DESC LIMIT 20`, accountID)
+		if err != nil {
+			return recentScans
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var it recentScan
+			var created time.Time
+			var raw any
+			_ = rows.Scan(&it.ID, &it.Status, &it.Filename, &it.SHA256, &created, &raw)
+			it.Created = created.Format("Jan 2, 2006 15:04")
+			it.Detection = detectionFromRaw(raw)
+			recentScans = append(recentScans, it)
+		}
+		return recentScans
+	}
+
+	loadScanSummary := func(c *gin.Context, scanID string) (string, string, string, int64, string, string, string, string, time.Time, bool) {
+		var status, filename, sha, md5sum, sha1sum, crc32sum string
+		var size int64
+		var created time.Time
+		var ssdeep *string
+		err := cfg.Database.QueryRow(c, `
+SELECT status, original_filename, sha256, file_size, md5, sha1, crc32, ssdeep, created_at
+FROM scans WHERE id=$1`, scanID).Scan(&status, &filename, &sha, &size, &md5sum, &sha1sum, &crc32sum, &ssdeep, &created)
+		if err != nil {
+			return "", "", "", 0, "", "", "", "", time.Time{}, false
+		}
+		ss := ""
+		if ssdeep != nil {
+			ss = *ssdeep
+		}
+		return status, filename, sha, size, md5sum, sha1sum, crc32sum, ss, created, true
+	}
+
+	loadScanResults := func(c *gin.Context, scanID string) []scanResultRow {
+		rows, _ := cfg.Database.Query(c, `SELECT av_name, status, deleted, raw_json, updated_at FROM scan_results WHERE scan_id=$1 ORDER BY av_name`, scanID)
+		if rows == nil {
+			return nil
+		}
+		defer rows.Close()
+		var results []scanResultRow
+		for rows.Next() {
+			var r scanResultRow
+			var raw any
+			_ = rows.Scan(&r.AV, &r.Status, &r.Deleted, &raw, &r.Updated)
+			r.Detection = detectionFromRaw(raw)
+			results = append(results, r)
+		}
+		return results
+	}
+
+	clearCookie := func(c *gin.Context) {
+		sameSite := http.SameSiteLaxMode
+		if cfg.SameSiteStrict {
+			sameSite = http.SameSiteStrictMode
+		}
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name:     "monarch",
+			Value:    "",
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   cfg.SecureCookies,
+			SameSite: sameSite,
+			MaxAge:   -1,
+		})
+	}
+
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery())
 
@@ -88,6 +224,18 @@ func NewRouter(cfg RouterConfig) (http.Handler, error) {
 		cookie, err := c.Cookie("monarch")
 		if err == nil {
 			if accountID, ok := auth.VerifyCookie(cfg.CookieSecret, cookie); ok {
+				var banned bool
+				err := cfg.Database.QueryRow(c, `SELECT is_banned FROM users WHERE account_id=$1`, accountID).Scan(&banned)
+				if err != nil {
+					clearCookie(c)
+					c.Next()
+					return
+				}
+				if banned {
+					clearCookie(c)
+					c.Next()
+					return
+				}
 				c.Set("account_id", accountID)
 			}
 		}
@@ -97,36 +245,91 @@ func NewRouter(cfg RouterConfig) (http.Handler, error) {
 
 	r.GET("/", func(c *gin.Context) {
 		accountID, _ := c.Get("account_id")
-		type recentScan struct {
-			ID       string
-			Status   string
-			Filename string
-			SHA256   string
-			Created  string
-		}
+		var chartData template.JS
 		var recentScans []recentScan
 		if accountID != nil {
-			rows, err := cfg.Database.Query(c, `
-SELECT s.id, s.status, s.original_filename, s.sha256, s.created_at
-FROM scans s
-JOIN users u ON u.id = s.user_id
-WHERE u.account_id = $1
-ORDER BY s.created_at DESC LIMIT 20`, accountID)
-			if err == nil {
-				defer rows.Close()
-				for rows.Next() {
-					var it recentScan
-					var created time.Time
-					_ = rows.Scan(&it.ID, &it.Status, &it.Filename, &it.SHA256, &created)
-					it.Created = created.Format("Jan 2, 2006 15:04")
-					recentScans = append(recentScans, it)
+			recentScans = loadRecentScans(c, accountID.(string))
+
+			var labels []string
+			var scanCounts []int64
+			var userCounts []int64
+			scanRows, _ := cfg.Database.Query(c, `
+SELECT d::date AS day, COALESCE(COUNT(s.id), 0) AS count
+FROM generate_series(date_trunc('day', now()) - interval '2 days', date_trunc('day', now()), interval '1 day') d
+LEFT JOIN scans s
+  ON s.created_at >= d AND s.created_at < d + interval '1 day'
+GROUP BY day
+ORDER BY day
+`)
+			if scanRows != nil {
+				for scanRows.Next() {
+					var day time.Time
+					var n int64
+					_ = scanRows.Scan(&day, &n)
+					labels = append(labels, day.Format("Jan 02"))
+					scanCounts = append(scanCounts, n)
 				}
+				scanRows.Close()
+			}
+
+			userRows, _ := cfg.Database.Query(c, `
+SELECT d::date AS day, COALESCE(COUNT(u.id), 0) AS count
+FROM generate_series(date_trunc('day', now()) - interval '2 days', date_trunc('day', now()), interval '1 day') d
+LEFT JOIN users u
+  ON u.created_at >= d AND u.created_at < d + interval '1 day'
+GROUP BY day
+ORDER BY day
+`)
+			if userRows != nil {
+				for userRows.Next() {
+					var day time.Time
+					var n int64
+					_ = userRows.Scan(&day, &n)
+					userCounts = append(userCounts, n)
+				}
+				userRows.Close()
+			}
+
+			statusCounts := map[string]int64{}
+			stRows, _ := cfg.Database.Query(c, `SELECT status, COUNT(*) FROM scans WHERE created_at >= now() - interval '30 days' GROUP BY status`)
+			if stRows != nil {
+				for stRows.Next() {
+					var st string
+					var n int64
+					_ = stRows.Scan(&st, &n)
+					statusCounts[st] = n
+				}
+				stRows.Close()
+			}
+
+			chart := map[string]any{
+				"labels":       labels,
+				"scanCounts":   scanCounts,
+				"userCounts":   userCounts,
+				"statusLabels": []string{"clean", "malware", "error"},
+				"statusCounts": []int64{statusCounts["clean"], statusCounts["malware"], statusCounts["error"]},
+			}
+			if b, err := json.Marshal(chart); err == nil {
+				chartData = template.JS(b)
 			}
 		}
 		renderHTML(c, http.StatusOK, "index.html", gin.H{
 			"AccountID":      accountID,
 			"RequireCaptcha": cfg.Scanner.CaptchaEnabled(),
 			"RecentScans":    recentScans,
+			"ChartData":      chartData,
+		})
+	})
+
+	r.GET("/partials/recent-scans", func(c *gin.Context) {
+		accountID, ok := c.Get("account_id")
+		if !ok {
+			c.Status(http.StatusNoContent)
+			return
+		}
+		recentScans := loadRecentScans(c, accountID.(string))
+		renderHTML(c, http.StatusOK, "partials_recent_scans.html", gin.H{
+			"RecentScans": recentScans,
 		})
 	})
 
@@ -202,9 +405,14 @@ ORDER BY s.created_at DESC LIMIT 20`, accountID)
 		password := c.PostForm("password")
 		var userID int64
 		var stored []byte
-		err := cfg.Database.QueryRow(c, `SELECT id, password_hash FROM users WHERE account_id=$1`, accountID).Scan(&userID, &stored)
+		var banned bool
+		err := cfg.Database.QueryRow(c, `SELECT id, password_hash, is_banned FROM users WHERE account_id=$1`, accountID).Scan(&userID, &stored, &banned)
 		if err != nil {
 			renderHTML(c, http.StatusBadRequest, "login.html", gin.H{"Error": "invalid credentials", "RequireCaptcha": cfg.RequireCaptcha})
+			return
+		}
+		if banned {
+			renderHTML(c, http.StatusForbidden, "login.html", gin.H{"Error": "account disabled", "RequireCaptcha": cfg.RequireCaptcha})
 			return
 		}
 		ok, _ := auth.VerifyPassword(password, stored)
@@ -219,7 +427,7 @@ ORDER BY s.created_at DESC LIMIT 20`, accountID)
 	})
 
 	r.POST("/logout", func(c *gin.Context) {
-		c.SetCookie("monarch", "", -1, "/", "", cfg.SecureCookies, true)
+		clearCookie(c)
 		c.Redirect(http.StatusSeeOther, "/")
 	})
 
@@ -262,9 +470,15 @@ ORDER BY s.created_at DESC LIMIT 20`, accountID)
 		}
 
 		var userID int64
-		err := cfg.Database.QueryRow(c, `SELECT id FROM users WHERE account_id=$1`, accountID.(string)).Scan(&userID)
+		var banned bool
+		err := cfg.Database.QueryRow(c, `SELECT id, is_banned FROM users WHERE account_id=$1`, accountID.(string)).Scan(&userID, &banned)
 		if err != nil {
 			renderHTML(c, http.StatusBadRequest, "index.html", gin.H{"Error": "invalid user", "AccountID": accountID})
+			return
+		}
+		if banned {
+			clearCookie(c)
+			renderHTML(c, http.StatusForbidden, "index.html", gin.H{"Error": "account disabled", "AccountID": nil})
 			return
 		}
 
@@ -284,41 +498,109 @@ ORDER BY s.created_at DESC LIMIT 20`, accountID)
 	// Public: scan result pages are visible to anyone.
 	r.GET("/scan/:id", func(c *gin.Context) {
 		scanID := c.Param("id")
-		var status, filename, sha string
-		err := cfg.Database.QueryRow(c, `SELECT status, original_filename, sha256 FROM scans WHERE id=$1`, scanID).Scan(&status, &filename, &sha)
+		status, filename, sha, size, md5sum, sha1sum, crc32sum, ssdeep, created, ok := loadScanSummary(c, scanID)
+		if !ok {
+			c.String(404, "not found")
+			return
+		}
+		results := loadScanResults(c, scanID)
+		detected := 0
+		for _, r := range results {
+			if r.Status == "malware" {
+				detected++
+			}
+		}
+		terminal := status == "clean" || status == "malware" || status == "error"
+
+		renderHTML(c, http.StatusOK, "scan.html", gin.H{
+			"ScanID":        scanID,
+			"Status":        status,
+			"Filename":      filename,
+			"SHA256":        sha,
+			"MD5":           md5sum,
+			"SHA1":          sha1sum,
+			"CRC32":         crc32sum,
+			"SSDEEP":        ssdeep,
+			"FileSize":      size,
+			"CreatedAt":     created,
+			"DetectedCount": detected,
+			"EngineCount":   len(results),
+			"Results":       results,
+			"IsTerminal":    terminal,
+		})
+	})
+
+	// Public: direct scan result lookup by sha256.
+	r.GET("/scan-result/:sha", func(c *gin.Context) {
+		sha := c.Param("sha")
+		if !isSHA256Hex(sha) {
+			c.String(400, "invalid sha256")
+			return
+		}
+		var scanID string
+		err := cfg.Database.QueryRow(c, `SELECT id FROM scans WHERE sha256=$1 ORDER BY created_at DESC LIMIT 1`, sha).Scan(&scanID)
 		if err != nil {
 			c.String(404, "not found")
 			return
 		}
-		type row struct {
-			AV      string
-			Status  string
-			Deleted *bool
-			Updated time.Time
-		}
-		rows, _ := cfg.Database.Query(c, `SELECT av_name, status, deleted, updated_at FROM scan_results WHERE scan_id=$1 ORDER BY av_name`, scanID)
-		defer rows.Close()
-		var results []row
-		for rows.Next() {
-			var r row
-			_ = rows.Scan(&r.AV, &r.Status, &r.Deleted, &r.Updated)
-			results = append(results, r)
-		}
+		c.Redirect(http.StatusSeeOther, "/scan/"+scanID)
+	})
 
-		renderHTML(c, http.StatusOK, "scan.html", gin.H{
-			"ScanID":   scanID,
-			"Status":   status,
-			"Filename": filename,
-			"SHA256":   sha,
-			"Results":  results,
+	r.GET("/partials/scan-status/:id", func(c *gin.Context) {
+		scanID := c.Param("id")
+		status, filename, sha, _, _, _, _, _, _, ok := loadScanSummary(c, scanID)
+		if !ok {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		terminal := status == "clean" || status == "malware" || status == "error"
+		renderHTML(c, http.StatusOK, "partials_scan_status.html", gin.H{
+			"ScanID":     scanID,
+			"Status":     status,
+			"Filename":   filename,
+			"SHA256":     sha,
+			"IsTerminal": terminal,
+		})
+	})
+
+	r.GET("/partials/scan-banner/:id", func(c *gin.Context) {
+		scanID := c.Param("id")
+		status, _, _, _, _, _, _, _, _, ok := loadScanSummary(c, scanID)
+		if !ok {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		terminal := status == "clean" || status == "malware" || status == "error"
+		renderHTML(c, http.StatusOK, "partials_scan_banner.html", gin.H{
+			"ScanID":     scanID,
+			"IsTerminal": terminal,
+		})
+	})
+
+	r.GET("/partials/scan-results/:id", func(c *gin.Context) {
+		scanID := c.Param("id")
+		results := loadScanResults(c, scanID)
+		status, _, _, _, _, _, _, _, _, ok := loadScanSummary(c, scanID)
+		if !ok {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		terminal := status == "clean" || status == "malware" || status == "error"
+		renderHTML(c, http.StatusOK, "partials_scan_results.html", gin.H{
+			"ScanID":     scanID,
+			"Results":    results,
+			"IsTerminal": terminal,
 		})
 	})
 
 	// Public: scan JSON is visible to anyone.
 	r.GET("/api/scan/:id", func(c *gin.Context) {
 		scanID := c.Param("id")
-		var status, filename, sha string
-		err := cfg.Database.QueryRow(c, `SELECT status, original_filename, sha256 FROM scans WHERE id=$1`, scanID).Scan(&status, &filename, &sha)
+		var status, filename, sha, md5sum, sha1sum, crc32sum string
+		var size int64
+		var created time.Time
+		var ssdeep *string
+		err := cfg.Database.QueryRow(c, `SELECT status, original_filename, sha256, file_size, md5, sha1, crc32, ssdeep, created_at FROM scans WHERE id=$1`, scanID).Scan(&status, &filename, &sha, &size, &md5sum, &sha1sum, &crc32sum, &ssdeep, &created)
 		if err != nil {
 			c.JSON(404, gin.H{"error": "not found"})
 			return
@@ -332,9 +614,13 @@ ORDER BY s.created_at DESC LIMIT 20`, accountID)
 			var raw any
 			var updated time.Time
 			_ = rows.Scan(&avName, &st, &deleted, &raw, &updated)
-			out = append(out, gin.H{"av": avName, "status": st, "deleted": deleted, "raw": raw, "updated_at": updated})
+			out = append(out, gin.H{"av": avName, "status": st, "deleted": deleted, "detection": detectionFromRaw(raw), "raw": raw, "updated_at": updated})
 		}
-		c.JSON(200, gin.H{"id": scanID, "status": status, "filename": filename, "sha256": sha, "results": out})
+		ss := ""
+		if ssdeep != nil {
+			ss = *ssdeep
+		}
+		c.JSON(200, gin.H{"id": scanID, "status": status, "filename": filename, "sha256": sha, "md5": md5sum, "sha1": sha1sum, "crc32": crc32sum, "ssdeep": ss, "file_size": size, "created_at": created, "results": out})
 	})
 
 	// Public: lookup by sha256 (anyone can see scans for a hash).
@@ -381,15 +667,143 @@ ORDER BY s.created_at DESC LIMIT 20`, accountID)
 
 	if cfg.AdminUser != "" && cfg.AdminPass != "" {
 		admin := r.Group("/admin", gin.BasicAuth(gin.Accounts{cfg.AdminUser: cfg.AdminPass}))
+		admin.POST("/user/:account/ban", func(c *gin.Context) {
+			acct := c.Param("account")
+			reason := strings.TrimSpace(c.PostForm("reason"))
+			if acct == "" {
+				c.Redirect(http.StatusSeeOther, "/admin/")
+				return
+			}
+			_, _ = cfg.Database.Exec(c, `UPDATE users SET is_banned=TRUE, banned_at=now(), ban_reason=$2 WHERE account_id=$1`, acct, reason)
+			clearCookie(c)
+			c.Redirect(http.StatusSeeOther, "/admin/")
+		})
+
+		admin.POST("/user/:account/unban", func(c *gin.Context) {
+			acct := c.Param("account")
+			if acct == "" {
+				c.Redirect(http.StatusSeeOther, "/admin/")
+				return
+			}
+			_, _ = cfg.Database.Exec(c, `UPDATE users SET is_banned=FALSE, banned_at=NULL, ban_reason=NULL WHERE account_id=$1`, acct)
+			c.Redirect(http.StatusSeeOther, "/admin/")
+		})
+
+		admin.POST("/user/:account/credits", func(c *gin.Context) {
+			acct := c.Param("account")
+			deltaStr := strings.TrimSpace(c.PostForm("delta"))
+			if acct == "" || deltaStr == "" {
+				c.Redirect(http.StatusSeeOther, "/admin/")
+				return
+			}
+			delta, err := strconv.ParseInt(deltaStr, 10, 64)
+			if err != nil {
+				c.Redirect(http.StatusSeeOther, "/admin/")
+				return
+			}
+			_, _ = cfg.Database.Exec(c, `UPDATE users SET credits_balance = GREATEST(0, credits_balance + $2) WHERE account_id=$1`, acct, delta)
+			c.Redirect(http.StatusSeeOther, "/admin/")
+		})
+
 		admin.GET("/", func(c *gin.Context) {
-			rows, _ := cfg.Database.Query(c, `
+			type stat struct {
+				Label string
+				Value string
+			}
+			var userCount int64
+			_ = cfg.Database.QueryRow(c, `SELECT COUNT(*) FROM users`).Scan(&userCount)
+			var scanCountAll int64
+			_ = cfg.Database.QueryRow(c, `SELECT COUNT(*) FROM scans`).Scan(&scanCountAll)
+			var scanCount30d int64
+			_ = cfg.Database.QueryRow(c, `SELECT COUNT(*) FROM scans WHERE created_at >= now() - interval '30 days'`).Scan(&scanCount30d)
+
+			statusCounts := map[string]int64{}
+			rows, _ := cfg.Database.Query(c, `SELECT status, COUNT(*) FROM scans WHERE created_at >= now() - interval '30 days' GROUP BY status`)
+			if rows != nil {
+				for rows.Next() {
+					var st string
+					var n int64
+					_ = rows.Scan(&st, &n)
+					statusCounts[st] = n
+				}
+				rows.Close()
+			}
+
+			type dayCount struct {
+				Day   time.Time
+				Count int64
+			}
+			var series []dayCount
+			var maxDaily int64
+			days, _ := cfg.Database.Query(c, `
+SELECT d::date AS day, COALESCE(COUNT(s.id), 0) AS count
+FROM generate_series(date_trunc('day', now()) - interval '29 days', date_trunc('day', now()), interval '1 day') d
+LEFT JOIN scans s
+  ON s.created_at >= d AND s.created_at < d + interval '1 day'
+GROUP BY day
+ORDER BY day
+`)
+			if days != nil {
+				for days.Next() {
+					var day time.Time
+					var n int64
+					_ = days.Scan(&day, &n)
+					if n > maxDaily {
+						maxDaily = n
+					}
+					series = append(series, dayCount{Day: day, Count: n})
+				}
+				days.Close()
+			}
+
+			type userRow struct {
+				Account        string
+				Created        time.Time
+				Banned         bool
+				CreditsBalance int64
+				Scans30d       int64
+				LastScan       *time.Time
+			}
+			var users []userRow
+			top, _ := cfg.Database.Query(c, `
+SELECT u.account_id, u.created_at, u.is_banned, u.credits_balance,
+       COALESCE(COUNT(s.id), 0) AS scans_30d,
+       MAX(s.created_at) AS last_scan
+FROM users u
+LEFT JOIN scans s
+  ON s.user_id = u.id
+ AND s.created_at >= now() - interval '30 days'
+GROUP BY u.id
+ORDER BY scans_30d DESC, u.created_at DESC
+LIMIT 20
+`)
+			if top != nil {
+				for top.Next() {
+					var it userRow
+					var last *time.Time
+					_ = top.Scan(&it.Account, &it.Created, &it.Banned, &it.CreditsBalance, &it.Scans30d, &last)
+					it.LastScan = last
+					users = append(users, it)
+				}
+				top.Close()
+			}
+
+			stats := []stat{
+				{Label: "Users", Value: fmt.Sprintf("%d", userCount)},
+				{Label: "Scans (all time)", Value: fmt.Sprintf("%d", scanCountAll)},
+				{Label: "Scans (last 30d)", Value: fmt.Sprintf("%d", scanCount30d)},
+				{Label: "Clean (30d)", Value: fmt.Sprintf("%d", statusCounts["clean"])},
+				{Label: "Malware (30d)", Value: fmt.Sprintf("%d", statusCounts["malware"])},
+				{Label: "Error (30d)", Value: fmt.Sprintf("%d", statusCounts["error"])},
+			}
+
+			scanRows, _ := cfg.Database.Query(c, `
 SELECT s.id, u.account_id, s.status, s.original_filename, s.created_at
 FROM scans s
 JOIN users u ON u.id=s.user_id
 ORDER BY s.created_at DESC
 LIMIT 50
 `)
-			defer rows.Close()
 			type row struct {
 				ID       string
 				Account  string
@@ -398,12 +812,22 @@ LIMIT 50
 				Created  time.Time
 			}
 			var items []row
-			for rows.Next() {
-				var it row
-				_ = rows.Scan(&it.ID, &it.Account, &it.Status, &it.Filename, &it.Created)
-				items = append(items, it)
+			if scanRows != nil {
+				defer scanRows.Close()
+				for scanRows.Next() {
+					var it row
+					_ = scanRows.Scan(&it.ID, &it.Account, &it.Status, &it.Filename, &it.Created)
+					items = append(items, it)
+				}
 			}
-			renderHTML(c, http.StatusOK, "admin.html", gin.H{"Items": items})
+			renderHTML(c, http.StatusOK, "admin.html", gin.H{
+				"Items":        items,
+				"Stats":        stats,
+				"Series":       series,
+				"SeriesMax":    maxDaily,
+				"TopUsers":     users,
+				"StatusCounts": statusCounts,
+			})
 		})
 	}
 

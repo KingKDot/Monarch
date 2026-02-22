@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Monarch</title>
   <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  {{if .ChartData}}<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>{{end}}
   <script>
+    const MAX_UPLOAD_BYTES = 35 * 1024 * 1024;
+
     async function loadCaptcha(prefix) {
       const res = await fetch('/captcha/new');
       const data = await res.json();
@@ -35,11 +39,38 @@
       if (lbl && inp.files.length) lbl.textContent = inp.files[0].name;
     }
 
+    function showUploadError(msg) {
+      const err = document.getElementById('upload-error');
+      if (!err) return;
+      if (msg) {
+        err.textContent = msg;
+        err.style.display = 'flex';
+      } else {
+        err.textContent = '';
+        err.style.display = 'none';
+      }
+    }
+
+    function validateFileSize(inp) {
+      if (!inp || !inp.files || !inp.files.length) return true;
+      const size = inp.files[0].size || 0;
+      if (size > MAX_UPLOAD_BYTES) {
+        const mb = (size / (1024 * 1024)).toFixed(1);
+        showUploadError('File is too large (' + mb + ' MB). Max is 35 MB.');
+        return false;
+      }
+      showUploadError('');
+      return true;
+    }
+
     function setupUpload() {
       const form = document.getElementById('scan-form');
       if (!form) return;
+      const inp = form.querySelector('input[type=file]');
+      if (inp) inp.addEventListener('change', () => validateFileSize(inp));
       form.addEventListener('submit', e => {
         e.preventDefault();
+        if (inp && !validateFileSize(inp)) return;
         const btn = document.getElementById('scan-btn');
         const prog = document.getElementById('upload-progress');
         const bar  = document.getElementById('upload-progress-bar');
@@ -97,6 +128,9 @@
     <div class="nav-links">
       <a href="/hash" class="nav-link">Hash lookup</a>
       {{if .AccountID}}
+        <span class="nav-link" style="opacity:0.85; cursor:default; user-select:all;">
+          Account ID: <span style="font-variant-numeric:tabular-nums;">{{.AccountID}}</span>
+        </span>
         <form method="post" action="/logout" style="display:contents;">
           <button type="submit" class="nav-link">Logout</button>
         </form>
@@ -118,6 +152,27 @@
   {{end}}
 
   {{if .AccountID}}
+  {{if .ChartData}}
+  <div class="card fade" style="overflow:hidden;">
+    <div class="card-header">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M19 9l-5 5-4-4-3 3"/></svg>
+      Usage insights (last 30 days)
+    </div>
+    <div class="card-body">
+      <div class="chart-grid">
+        <div class="chart-card">
+          <div class="chart-title">Daily scans</div>
+          <canvas id="chart-scans" class="chart-canvas" width="420" height="120"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">New users</div>
+          <canvas id="chart-users" class="chart-canvas" width="420" height="120"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+  {{end}}
+
   <div class="home-grid">
 
     {{/* ── Upload form ── */}}
@@ -129,12 +184,26 @@
       <div class="card-body">
         <p class="text-muted text-small" style="margin-bottom:1.25rem;">Submit a file to scan across your AV environments. Max 35 MB.</p>
         <form id="scan-form" method="post" action="/scan" enctype="multipart/form-data">
+          <div class="form-group" style="margin-bottom:0.9rem;">
+            <div class="form-label" style="margin-bottom:0.5rem;">Mode</div>
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+              <label class="nav-link" style="gap:0.45rem; cursor:pointer;">
+                <input type="radio" name="mode" value="scantime" checked />
+                Scan time
+              </label>
+              <label class="nav-link" style="gap:0.45rem; opacity:0.55; cursor:not-allowed;">
+                <input type="radio" name="mode" value="runtime" disabled />
+                Runtime (coming soon)
+              </label>
+            </div>
+          </div>
           <div class="drop-zone" id="drop-zone" style="margin-bottom:1rem;">
             <input type="file" name="file" required />
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2a2a38" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 0.6rem;"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
             <div class="drop-label" id="drop-label">Drop a file or click to browse</div>
             <div class="drop-hint">Any file type · up to 35 MB</div>
           </div>
+          <div id="upload-error" class="alert-error" style="display:none; margin-bottom:1rem;"></div>
           <div class="upload-progress" id="upload-progress">
             <div class="upload-progress-track">
               <div class="upload-progress-bar" id="upload-progress-bar"></div>
@@ -162,42 +231,8 @@
     </div>
 
     {{/* ── Recent scans ── */}}
-    <div class="card fade" style="overflow:hidden;">
-      <div class="card-header">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        Recent scans
-      </div>
-      {{if .RecentScans}}
-      <div style="overflow-x:auto;">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>File</th>
-              <th>Status</th>
-              <th>Created</th>
-            </tr>
-          </thead>
-          <tbody>
-            {{range .RecentScans}}
-            <tr class="{{if eq .Status "malware"}}row-malware{{else if eq .Status "clean"}}row-clean{{else if eq .Status "error"}}row-error{{end}}">
-              <td class="td-name">
-                <a href="/scan/{{.ID}}" class="link" style="font-weight:500;">{{.Filename}}</a>
-              </td>
-              <td>
-                <span class="badge {{if eq .Status "malware"}}badge-malware{{else if eq .Status "clean"}}badge-clean{{else if eq .Status "error"}}badge-error{{else if eq .Status "scanning"}}badge-scanning{{else if eq .Status "queued"}}badge-queued{{else}}badge-default{{end}}">{{.Status}}</span>
-              </td>
-              <td class="td-dim">{{.Created}}</td>
-            </tr>
-            {{end}}
-          </tbody>
-        </table>
-      </div>
-      {{else}}
-      <div class="card-body" style="text-align:center; padding:3rem 1.5rem;">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2a2a38" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 0.75rem;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        <p class="text-muted text-small">No scans yet.</p>
-      </div>
-      {{end}}
+    <div id="recent-scans-card" class="card fade" style="overflow:hidden;" hx-get="/partials/recent-scans" hx-trigger="every 15s" hx-swap="innerHTML">
+      {{template "partials_recent_scans.html" .}}
     </div>
 
   </div>
@@ -216,5 +251,74 @@
   {{end}}
 
 </main>
+
+{{if .ChartData}}
+<script>
+  const chartData = {{.ChartData}};
+  if (window.Chart && chartData) {
+    const axisColor = '#3f3f46';
+    const gridColor = 'rgba(255,255,255,0.04)';
+    const labelColor = '#a1a1aa';
+
+    const scansCtx = document.getElementById('chart-scans');
+    if (scansCtx) {
+      new Chart(scansCtx, {
+        type: 'line',
+        data: {
+          labels: chartData.labels || [],
+          datasets: [{
+            label: 'Scans',
+            data: chartData.scanCounts || [],
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59,130,246,0.12)',
+            tension: 0.35,
+            fill: true,
+            pointRadius: 0,
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: false,
+          maintainAspectRatio: false,
+          layout: { padding: { left: 4, right: 12 } },
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { offset: true, ticks: { color: labelColor, padding: 6 }, grid: { color: gridColor } },
+            y: { ticks: { color: labelColor }, grid: { color: gridColor } }
+          }
+        }
+      });
+    }
+
+    const usersCtx = document.getElementById('chart-users');
+    if (usersCtx) {
+      new Chart(usersCtx, {
+        type: 'bar',
+        data: {
+          labels: chartData.labels || [],
+          datasets: [{
+            label: 'New users',
+            data: chartData.userCounts || [],
+            backgroundColor: 'rgba(34,197,94,0.25)',
+            borderColor: '#22c55e',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: false,
+          maintainAspectRatio: false,
+          layout: { padding: { left: 4, right: 12 } },
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { offset: true, ticks: { color: labelColor, maxRotation: 0, minRotation: 0, padding: 6 }, grid: { color: gridColor } },
+            y: { ticks: { color: labelColor }, grid: { color: gridColor } }
+          }
+        }
+      });
+    }
+
+  }
+</script>
+{{end}}
 </body>
 </html>

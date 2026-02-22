@@ -1,0 +1,12 @@
+<tbody id="results-body" hx-get="/partials/scan-results/{{.ScanID}}" hx-trigger="{{if .IsTerminal}}load{{else}}load, every 1s{{end}}" hx-swap="outerHTML">
+  {{range .Results}}
+  <tr class="{{if eq .Status "malware"}}row-malware{{else if eq .Status "clean"}}row-clean{{else if eq .Status "error"}}row-error{{end}}">
+    <td class="td-name">{{.AV}}</td>
+    <td>
+      <span class="{{if eq .Status "malware"}}badge badge-malware{{else if eq .Status "clean"}}badge badge-clean{{else if eq .Status "error"}}badge badge-error{{else}}badge badge-default{{end}}">{{.Status}}</span>
+    </td>
+    <td>{{if .Deleted}}{{.Deleted}}{{else}}&mdash;{{end}}</td>
+    <td class="td-dim">{{.Updated}}</td>
+  </tr>
+  {{end}}
+</tbody>

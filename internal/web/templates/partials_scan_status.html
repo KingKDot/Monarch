@@ -1,0 +1,10 @@
+<div id="scan-status-card" class="card fade" hx-get="/partials/scan-status/{{.ScanID}}" hx-trigger="{{if .IsTerminal}}load{{else}}load, every 1s{{end}}" hx-swap="outerHTML">
+  <div class="card-body" style="display:flex; flex-direction:column; gap:0.5rem;">
+    <div style="display:flex; align-items:center; gap:0.6rem;">
+      <span id="scan-dot" class="{{if eq .Status "clean"}}dot dot-clean{{else if eq .Status "malware"}}dot dot-malware{{else if eq .Status "error"}}dot dot-error{{else}}dot dot-scanning{{end}}"></span>
+      <span id="scan-status" class="{{if eq .Status "clean"}}badge badge-clean{{else if eq .Status "malware"}}badge badge-malware{{else if eq .Status "error"}}badge badge-error{{else if eq .Status "scanning"}}badge badge-scanning{{else}}badge badge-pending{{end}}">{{.Status}}</span>
+    </div>
+    <div style="font-size:0.9rem; font-weight:600; color:#e4e4e7;">{{.Filename}}</div>
+    <div class="mono text-muted" style="font-size:0.72rem;">{{.SHA256}}</div>
+  </div>
+</div>

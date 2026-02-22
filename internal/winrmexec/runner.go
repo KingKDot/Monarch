@@ -37,20 +37,22 @@ type ScanRequest struct {
 }
 
 type ScanResult struct {
-	AV         string    `json:"av"`
-	TargetIP   string    `json:"target_ip"`
-	RemoteDir  string    `json:"remote_dir"`
-	RemotePath string    `json:"remote_path"`
-	ScriptOut  string    `json:"script_out"`
-	ResultOut  string    `json:"result_out"`
-	Deleted    bool      `json:"deleted"`
+	AV            string    `json:"av"`
+	TargetIP      string    `json:"target_ip"`
+	RemoteDir     string    `json:"remote_dir"`
+	RemotePath    string    `json:"remote_path"`
+	ScriptOut     string    `json:"script_out"`
+	ResultOut     string    `json:"result_out"`
+	Deleted       bool      `json:"deleted"`
 	FileExists    bool      `json:"file_exists"`
 	EventDetected bool      `json:"event_detected"`
-	CheckedAt  time.Time `json:"checked_at"`
-	Stdout     string    `json:"stdout"`
-	Stderr     string    `json:"stderr"`
-	ExitCode   int       `json:"exit_code"`
-	ScriptPath string    `json:"script_path"`
+	EventMessage  string    `json:"event_message"`
+	ThreatName    string    `json:"threat_name"`
+	CheckedAt     time.Time `json:"checked_at"`
+	Stdout        string    `json:"stdout"`
+	Stderr        string    `json:"stderr"`
+	ExitCode      int       `json:"exit_code"`
+	ScriptPath    string    `json:"script_path"`
 }
 
 func NewRunner(cfg Config) *Runner {
@@ -108,8 +110,9 @@ func (r *Runner) RunScan(ctx context.Context, req ScanRequest) (ScanResult, erro
 		),
 		fmt.Sprintf("$exists = Test-Path -LiteralPath '%s'", escapePS(remotePath)),
 		// Final event check for the result JSON (covers the case where the loop exited via event, not file deletion).
-		fmt.Sprintf("$evDet=$false; try { $evDet=[bool]((Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Windows Defender/Operational'; Id=@(1116,1117); StartTime=$scanStart} -ErrorAction Stop | Where-Object { $_.Message -match '%s' } | Select-Object -First 1) -ne $null) } catch {}", req.SHA256),
-		"$res = [ordered]@{ file_exists=$exists; deleted=(-not $exists -or $evDet); event_detected=$evDet; script_out_path='' }",
+		fmt.Sprintf("$evDet=$false; $evMsg=$null; try { $evObj=(Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Windows Defender/Operational'; Id=@(1116,1117); StartTime=$scanStart} -ErrorAction Stop | Where-Object { $_.Message -match '%s' } | Select-Object -First 1); if ($evObj) { $evDet=$true; $evMsg=$evObj.Message } } catch {}", req.SHA256),
+		"$threat=$null; if ($evMsg) { if ($evMsg -match 'Threat Name\\s*:\\s*(.+)') { $threat=$Matches[1].Trim() } elseif ($evMsg -match '(?m)^\\s*Name\\s*:\\s*(.+)$') { $threat=$Matches[1].Trim() } }",
+		"$res = [ordered]@{ file_exists=$exists; deleted=(-not $exists -or $evDet); event_detected=$evDet; event_message=$evMsg; threat_name=$threat; script_out_path='' }",
 		fmt.Sprintf("if (Test-Path -LiteralPath '%s') { $res.script_out_path='%s' }", escapePS(scriptOut), escapePS(scriptOut)),
 		fmt.Sprintf("$res | ConvertTo-Json -Compress | Set-Content -LiteralPath '%s' -Encoding UTF8", escapePS(resultOut)),
 		fmt.Sprintf("Get-Content -LiteralPath '%s' -Raw", escapePS(resultOut)),
@@ -140,14 +143,18 @@ func (r *Runner) RunScan(ctx context.Context, req ScanRequest) (ScanResult, erro
 
 	// stdout should be JSON from remoteOut.
 	var remote struct {
-		Deleted       bool `json:"deleted"`
-		FileExists    bool `json:"file_exists"`
-		EventDetected bool `json:"event_detected"`
+		Deleted       bool   `json:"deleted"`
+		FileExists    bool   `json:"file_exists"`
+		EventDetected bool   `json:"event_detected"`
+		EventMessage  string `json:"event_message"`
+		ThreatName    string `json:"threat_name"`
 	}
 	if uerr := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &remote); uerr == nil {
 		result.Deleted = remote.Deleted
 		result.FileExists = remote.FileExists
 		result.EventDetected = remote.EventDetected
+		result.EventMessage = remote.EventMessage
+		result.ThreatName = remote.ThreatName
 	}
 	return result, nil
 }

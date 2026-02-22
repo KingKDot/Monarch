@@ -1,0 +1,37 @@
+<div class="card-header">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+  Recent scans
+</div>
+{{if .RecentScans}}
+<div style="overflow-x:auto;">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>File</th>
+        <th>Status</th>
+        <th>Detection</th>
+        <th>Created</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .RecentScans}}
+      <tr class="{{if eq .Status "malware"}}row-malware{{else if eq .Status "clean"}}row-clean{{else if eq .Status "error"}}row-error{{end}}">
+        <td class="td-name">
+          <a href="/scan/{{.ID}}" class="link" style="font-weight:500;">{{.Filename}}</a>
+        </td>
+        <td>
+          <span class="badge {{if eq .Status "malware"}}badge-malware{{else if eq .Status "clean"}}badge-clean{{else if eq .Status "error"}}badge-error{{else if eq .Status "scanning"}}badge-scanning{{else if eq .Status "queued"}}badge-queued{{else}}badge-default{{end}}">{{.Status}}</span>
+        </td>
+        <td class="td-name">{{if .Detection}}{{.Detection}}{{else}}&mdash;{{end}}</td>
+        <td class="td-dim">{{.Created}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}
+<div class="card-body" style="text-align:center; padding:3rem 1.5rem;">
+  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2a2a38" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 0.75rem;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+  <p class="text-muted text-small">No scans yet.</p>
+</div>
+{{end}}

@@ -1,0 +1,11 @@
+<div id="scan-banner" hx-get="/partials/scan-banner/{{.ScanID}}" hx-trigger="{{if .IsTerminal}}load{{else}}load, every 1s{{end}}" hx-swap="outerHTML"{{if .IsTerminal}} style="display:none;"{{end}}>
+  {{if not .IsTerminal}}
+  <div class="scan-banner fade">
+    <span class="spinner"></span>
+    <div>
+      <div class="scan-banner-text">Scan in progress</div>
+      <div class="scan-banner-sub">Results update automatically</div>
+    </div>
+  </div>
+  {{end}}
+</div>

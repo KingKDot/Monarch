@@ -2,11 +2,14 @@ package scan
 
 import (
 	"context"
+	"crypto/md5"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"mime/multipart"
 	"os"
@@ -129,19 +132,31 @@ func (s *Service) EnqueueScan(ctx context.Context, userID int64, fileHeader *mul
 	}
 	defer out.Close()
 
-	h := sha256.New()
-	tee := io.TeeReader(io.LimitReader(file, s.cfg.MaxUploadBytes+1), h)
-	if _, err := io.Copy(out, tee); err != nil {
+	md5h := md5.New()
+	sha1h := sha1.New()
+	sha256h := sha256.New()
+	crch := crc32.NewIEEE()
+	writer := io.MultiWriter(out, md5h, sha1h, sha256h, crch)
+	limited := io.LimitReader(file, s.cfg.MaxUploadBytes+1)
+	n, err := io.Copy(writer, limited)
+	if err != nil {
 		return uuid.Nil, err
 	}
-	sha := hex.EncodeToString(h.Sum(nil))
+	if n > s.cfg.MaxUploadBytes {
+		_ = os.Remove(tmpPath)
+		return uuid.Nil, fmt.Errorf("file too large (%d > %d)", n, s.cfg.MaxUploadBytes)
+	}
+	sha := hex.EncodeToString(sha256h.Sum(nil))
+	md5sum := hex.EncodeToString(md5h.Sum(nil))
+	sha1sum := hex.EncodeToString(sha1h.Sum(nil))
+	crc := fmt.Sprintf("%08x", crch.Sum32())
 	localPath := filepath.Join(localDir, sha)
 	if err := os.Rename(tmpPath, localPath); err != nil {
 		return uuid.Nil, err
 	}
 
-	_, err = s.cfg.Database.Exec(ctx, `INSERT INTO scans (id, user_id, original_filename, sha256, status) VALUES ($1,$2,$3,$4,$5)`,
-		scanID, userID, name, sha, "queued")
+	_, err = s.cfg.Database.Exec(ctx, `INSERT INTO scans (id, user_id, original_filename, file_size, md5, sha1, sha256, crc32, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		scanID, userID, name, n, md5sum, sha1sum, sha, crc, "queued")
 	if err != nil {
 		return uuid.Nil, err
 	}
