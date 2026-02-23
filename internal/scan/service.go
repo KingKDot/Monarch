@@ -145,8 +145,6 @@ func (s *Service) EnqueueScan(ctx context.Context, userID int64, fileHeader *mul
 	var ssdeepHash *string
 	if fuzzy, err := ssdeep.FuzzyReader(tee); err == nil {
 		ssdeepHash = &fuzzy
-	} else if !errors.Is(err, ssdeep.ErrFileTooSmall) {
-		fmt.Printf("ssdeep error for %s: %v\n", tmpPath, err)
 	}
 	n := counting.n
 	if n > s.cfg.MaxUploadBytes {

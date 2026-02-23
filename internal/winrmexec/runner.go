@@ -99,7 +99,6 @@ func (r *Runner) RunScan(ctx context.Context, req ScanRequest) (ScanResult, erro
 	command := fmt.Sprintf("powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File %s -InputFile %s -OutputFile %s -SHA256 %s -WaitSeconds %d -FromStdin",
 		quoteCmdArg(req.ScriptPath), quoteCmdArg(remotePath), quoteCmdArg(scriptOut), quoteCmdArg(req.SHA256), int(req.Wait.Seconds()))
 	stdin := bytes.NewReader(req.Bytes)
-	log.Printf("winrm command: %s", command)
 	stdout, stderr, exitCode, err := runPS(ctx, client, command, stdin)
 	result.Stdout = stdout
 	result.Stderr = stderr

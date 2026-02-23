@@ -226,6 +226,8 @@ FROM scans WHERE id=$1`, scanID).Scan(&status, &filename, &sha, &size, &md5sum, 
 	})
 
 	activity := ratelimit.NewWindowCounter(cfg.CaptchaWindow, cfg.CaptchaThresh)
+	scanIPLimiter := ratelimit.NewWindowCounter(cfg.CaptchaWindow, cfg.CaptchaThresh)
+	scanAccountLimiter := ratelimit.NewWindowCounter(cfg.CaptchaWindow, cfg.CaptchaThresh)
 
 	setUser := func(c *gin.Context) {
 		cookie, err := c.Cookie("monarch")
@@ -338,15 +340,6 @@ ORDER BY day
 		renderHTML(c, http.StatusOK, "partials_recent_scans.html", gin.H{
 			"RecentScans": recentScans,
 		})
-	})
-
-	r.GET("/hash", func(c *gin.Context) {
-		sha := c.Query("sha")
-		if sha == "" {
-			c.Redirect(http.StatusSeeOther, "/")
-			return
-		}
-		c.Redirect(http.StatusSeeOther, "/hash/"+sha)
 	})
 
 	r.GET("/signup", func(c *gin.Context) {
@@ -467,6 +460,16 @@ ORDER BY day
 	r.POST("/scan", authRequired, func(c *gin.Context) {
 		accountID, _ := c.Get("account_id")
 		ip := c.ClientIP()
+		if _, over := scanIPLimiter.Increment("scan-ip:"+ip, time.Now()); over {
+			renderHTML(c, http.StatusTooManyRequests, "index.html", gin.H{"Error": "rate limit exceeded", "AccountID": accountID})
+			return
+		}
+		if accountID != nil {
+			if _, over := scanAccountLimiter.Increment("scan-account:"+accountID.(string), time.Now()); over {
+				renderHTML(c, http.StatusTooManyRequests, "index.html", gin.H{"Error": "rate limit exceeded", "AccountID": accountID})
+				return
+			}
+		}
 		if cfg.Scanner.ShouldRequireCaptcha(ip, time.Now()) {
 			id := c.PostForm("captcha_id")
 			sol := c.PostForm("captcha_solution")
@@ -535,22 +538,6 @@ ORDER BY day
 			"Results":       results,
 			"IsTerminal":    terminal,
 		})
-	})
-
-	// Public: direct scan result lookup by sha256.
-	r.GET("/scan-result/:sha", func(c *gin.Context) {
-		sha := c.Param("sha")
-		if !isSHA256Hex(sha) {
-			c.String(400, "invalid sha256")
-			return
-		}
-		var scanID string
-		err := cfg.Database.QueryRow(c, `SELECT id FROM scans WHERE sha256=$1 ORDER BY created_at DESC LIMIT 1`, sha).Scan(&scanID)
-		if err != nil {
-			c.String(404, "not found")
-			return
-		}
-		c.Redirect(http.StatusSeeOther, "/scan/"+scanID)
 	})
 
 	r.GET("/partials/scan-status/:id", func(c *gin.Context) {
@@ -628,48 +615,6 @@ ORDER BY day
 			ss = *ssdeep
 		}
 		c.JSON(200, gin.H{"id": scanID, "status": status, "filename": filename, "sha256": sha, "md5": md5sum, "sha1": sha1sum, "crc32": crc32sum, "ssdeep": ss, "file_size": size, "created_at": created, "results": out})
-	})
-
-	// Public: lookup by sha256 (anyone can see scans for a hash).
-	r.GET("/hash/:sha", func(c *gin.Context) {
-		sha := c.Param("sha")
-		if !isSHA256Hex(sha) {
-			c.String(400, "invalid sha256")
-			return
-		}
-		rows, _ := cfg.Database.Query(c, `SELECT id, status, original_filename, created_at FROM scans WHERE sha256=$1 ORDER BY created_at DESC LIMIT 100`, sha)
-		defer rows.Close()
-		type item struct {
-			ID       string
-			Status   string
-			Filename string
-			Created  time.Time
-		}
-		var items []item
-		for rows.Next() {
-			var it item
-			_ = rows.Scan(&it.ID, &it.Status, &it.Filename, &it.Created)
-			items = append(items, it)
-		}
-		renderHTML(c, http.StatusOK, "hash.html", gin.H{"SHA256": sha, "Items": items})
-	})
-
-	r.GET("/api/hash/:sha", func(c *gin.Context) {
-		sha := c.Param("sha")
-		if !isSHA256Hex(sha) {
-			c.JSON(400, gin.H{"error": "invalid sha256"})
-			return
-		}
-		rows, _ := cfg.Database.Query(c, `SELECT id, status, original_filename, created_at FROM scans WHERE sha256=$1 ORDER BY created_at DESC LIMIT 100`, sha)
-		defer rows.Close()
-		var items []gin.H
-		for rows.Next() {
-			var id, status, filename string
-			var created time.Time
-			_ = rows.Scan(&id, &status, &filename, &created)
-			items = append(items, gin.H{"id": id, "status": status, "filename": filename, "created_at": created})
-		}
-		c.JSON(200, gin.H{"sha256": sha, "scans": items})
 	})
 
 	if cfg.AdminUser != "" && cfg.AdminPass != "" {
@@ -839,22 +784,6 @@ LIMIT 50
 	}
 
 	return r, nil
-}
-
-func isSHA256Hex(s string) bool {
-	if len(s) != 64 {
-		return false
-	}
-	for _, ch := range s {
-		switch {
-		case ch >= '0' && ch <= '9':
-		case ch >= 'a' && ch <= 'f':
-		case ch >= 'A' && ch <= 'F':
-		default:
-			return false
-		}
-	}
-	return true
 }
 
 func setCookie(c *gin.Context, cfg RouterConfig, value string) {
