@@ -141,7 +141,7 @@
   </div>
 </nav>
 
-<main class="main">
+<main class="main main-home">
 
   {{if .Error}}
   <div class="alert-error fade">
@@ -152,7 +152,7 @@
 
   {{if .AccountID}}
   {{if .ChartData}}
-  <div class="card fade" style="overflow:hidden;">
+  <div class="card fade insights-card" style="overflow:hidden;">
     <div class="card-header">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M19 9l-5 5-4-4-3 3"/></svg>
       Usage insights (last 30 days)
@@ -175,14 +175,14 @@
   <div class="home-grid">
 
     {{/* ── Upload form ── */}}
-    <div class="card fade">
+    <div class="card fade scan-card">
       <div class="card-header">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
         Scan a file
       </div>
-      <div class="card-body">
+      <div class="card-body scan-card-body">
         <p class="text-muted text-small" style="margin-bottom:1.25rem;">Submit a file to scan across your AV environments. Max 35 MB.</p>
-        <form id="scan-form" method="post" action="/scan" enctype="multipart/form-data">
+        <form id="scan-form" class="scan-form" method="post" action="/scan" enctype="multipart/form-data">
           <div class="form-group" style="margin-bottom:0.9rem;">
             <div class="form-label" style="margin-bottom:0.5rem;">Mode</div>
             <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
@@ -196,7 +196,7 @@
               </label>
             </div>
           </div>
-          <div class="drop-zone" id="drop-zone" style="margin-bottom:1rem;">
+          <div class="drop-zone scan-drop-zone" id="drop-zone" style="margin-bottom:1rem;">
             <input type="file" name="file" required />
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2a2a38" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:0 auto 0.6rem;"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3"/></svg>
             <div class="drop-label" id="drop-label">Drop a file or click to browse</div>
@@ -230,7 +230,7 @@
     </div>
 
     {{/* ── Recent scans ── */}}
-    <div id="recent-scans-card" class="card fade" style="overflow:hidden;" hx-get="/partials/recent-scans" hx-trigger="every 15s" hx-swap="innerHTML">
+    <div id="recent-scans-card" class="card fade recent-scans-card" style="overflow:hidden;" hx-get="/partials/recent-scans" hx-trigger="every 15s" hx-swap="innerHTML">
       {{template "partials_recent_scans.html" .}}
     </div>
 

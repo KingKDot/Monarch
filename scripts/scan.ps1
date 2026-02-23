@@ -35,7 +35,6 @@ try {
 	# Marker file you can watch on the VM to confirm the script ran.
 	"started $(Get-Date -Format o) input=$InputFile" | Set-Content -LiteralPath (Join-Path $outDir 'monarch_started.txt') -Encoding UTF8
 	# Best-effort popup to interactive sessions (often won't display from WinRM/session0).
-	cmd.exe /c "msg * Monarch scan started" | Out-Null
 } catch { }
 
 $result = [ordered]@{
