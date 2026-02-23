@@ -38,6 +38,12 @@
       if (s==='queued')   return 'Queued';
       return s || 'Unknown';
     }
+    function formatLocalTime(iso) {
+      if (!iso) return '';
+      const dt = new Date(iso);
+      if (Number.isNaN(dt.getTime())) return (iso || '').replace('T',' ').slice(0,19);
+      return dt.toLocaleString();
+    }
     function renderResults(results) {
       const body = document.getElementById('results-body');
       if (!body) return;
@@ -65,7 +71,7 @@
 
         const tdUpd = document.createElement('td');
         tdUpd.className = 'td-dim';
-        tdUpd.textContent = ((r.updated_at || '').replace('T',' ').slice(0,19));
+        tdUpd.textContent = formatLocalTime(r.updated_at);
 
         tr.appendChild(tdName);
         tr.appendChild(tdStatus);

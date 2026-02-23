@@ -100,6 +100,10 @@ func NewRouter(cfg RouterConfig) (http.Handler, error) {
 			EventMessage string `json:"event_message"`
 			ResultOut    string `json:"result_out"`
 			ScriptOut    string `json:"script_out"`
+			ScriptJSON   struct {
+				DetectionName string `json:"detection_name"`
+				Result        string `json:"result"`
+			} `json:"script_json"`
 		}
 		if err := json.Unmarshal(b, &parsed); err != nil {
 			return ""
@@ -107,6 +111,9 @@ func NewRouter(cfg RouterConfig) (http.Handler, error) {
 		det := strings.TrimSpace(parsed.ThreatName)
 		if det == "" {
 			det = parseThreatName(parsed.EventMessage)
+		}
+		if det == "" {
+			det = strings.TrimSpace(parsed.ScriptJSON.DetectionName)
 		}
 		return det
 	}

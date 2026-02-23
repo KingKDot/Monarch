@@ -22,6 +22,7 @@ import (
 	"Monarch/internal/ratelimit"
 	"Monarch/internal/winrmexec"
 
+	"github.com/glaslos/ssdeep"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -67,6 +68,7 @@ type job struct {
 
 func NewService(cfg ServiceConfig) *Service {
 	os.MkdirAll(cfg.StorageDir, 0o700)
+	_ = purgeStorageDir(cfg.StorageDir)
 
 	s := &Service{
 		cfg:    cfg,
@@ -137,11 +139,16 @@ func (s *Service) EnqueueScan(ctx context.Context, userID int64, fileHeader *mul
 	sha256h := sha256.New()
 	crch := crc32.NewIEEE()
 	writer := io.MultiWriter(out, md5h, sha1h, sha256h, crch)
+	counting := &countWriter{w: writer}
 	limited := io.LimitReader(file, s.cfg.MaxUploadBytes+1)
-	n, err := io.Copy(writer, limited)
-	if err != nil {
-		return uuid.Nil, err
+	tee := io.TeeReader(limited, counting)
+	var ssdeepHash *string
+	if fuzzy, err := ssdeep.FuzzyReader(tee); err == nil {
+		ssdeepHash = &fuzzy
+	} else if !errors.Is(err, ssdeep.ErrFileTooSmall) {
+		fmt.Printf("ssdeep error for %s: %v\n", tmpPath, err)
 	}
+	n := counting.n
 	if n > s.cfg.MaxUploadBytes {
 		_ = os.Remove(tmpPath)
 		return uuid.Nil, fmt.Errorf("file too large (%d > %d)", n, s.cfg.MaxUploadBytes)
@@ -155,8 +162,8 @@ func (s *Service) EnqueueScan(ctx context.Context, userID int64, fileHeader *mul
 		return uuid.Nil, err
 	}
 
-	_, err = s.cfg.Database.Exec(ctx, `INSERT INTO scans (id, user_id, original_filename, file_size, md5, sha1, sha256, crc32, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-		scanID, userID, name, n, md5sum, sha1sum, sha, crc, "queued")
+	_, err = s.cfg.Database.Exec(ctx, `INSERT INTO scans (id, user_id, original_filename, file_size, md5, sha1, sha256, crc32, ssdeep, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		scanID, userID, name, n, md5sum, sha1sum, sha, crc, ssdeepHash, "queued")
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -186,6 +193,8 @@ func (s *Service) worker() {
 }
 
 func (s *Service) runJob(ctx context.Context, j job) {
+	defer removeScanFiles(j.localPath)
+
 	_, _ = s.cfg.Database.Exec(ctx, `UPDATE scans SET status=$2, updated_at=now() WHERE id=$1`, j.scanID, "running")
 
 	fileBytes, err := os.ReadFile(j.localPath)
@@ -193,7 +202,6 @@ func (s *Service) runJob(ctx context.Context, j job) {
 		s.fail(ctx, j.scanID, "read file", err)
 		return
 	}
-
 	overall := "clean"
 	type targetResult struct {
 		target av.Target
@@ -251,4 +259,38 @@ func sanitizeFilename(name string) string {
 		return "file.bin"
 	}
 	return name
+}
+
+type countWriter struct {
+	n int64
+	w io.Writer
+}
+
+func (c *countWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
+}
+
+func removeScanFiles(localPath string) {
+	if localPath == "" {
+		return
+	}
+	localDir := filepath.Dir(localPath)
+	_ = os.Remove(localPath)
+	_ = os.RemoveAll(localDir)
+}
+
+func purgeStorageDir(storageDir string) error {
+	if storageDir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(storageDir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		_ = os.RemoveAll(filepath.Join(storageDir, entry.Name()))
+	}
+	return nil
 }
