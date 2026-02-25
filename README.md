@@ -19,6 +19,10 @@ On the Windows VM:
 
    Run PowerShell as Administrator:
 
+    - Show network interfaces and their numbers:
+       - `Get-NetConnectionProfile | Select-Object InterfaceIndex, Name, NetworkCategory | Format-Table -AutoSize`
+    - Set the active Ethernet profile to Private (replace `<INTERFACE_INDEX>` with the number from above):
+       - `Set-NetConnectionProfile -InterfaceIndex <INTERFACE_INDEX> -NetworkCategory Private`
    - `winrm quickconfig -q`
    - `Set-Item WSMan:\localhost\Service\AllowUnencrypted -Value $true`
    - `Set-Item WSMan:\localhost\Service\Auth\Basic -Value $true`
