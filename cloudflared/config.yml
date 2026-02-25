@@ -1,0 +1,7 @@
+tunnel: scangaytunnel
+credentials-file: /etc/cloudflared/368f68af-2360-497a-abe2-08202169bafa.json
+
+ingress:
+  - hostname: scan.gay
+    service: http://app:8080
+  - service: http_status:404

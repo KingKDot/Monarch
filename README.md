@@ -54,7 +54,16 @@ On the machine/VM running Monarch, create `avs.json` next to `docker-compose.yml
 
 2. Start:
 
-   - `docker compose up --build`
+   - Windows (no Cloudflare tunnel): `scripts\\up.bat`
+   - Debian (auto-enables Cloudflare tunnel): `sh scripts/up.sh`
+   - Debian (force disable tunnel): `sh scripts/up.sh --no-cloudflared`
+   - Other Linux/macOS (without tunnel by default): `sh scripts/up.sh`
+   - Any Linux/macOS with tunnel (optional): `sh scripts/up.sh --with-cloudflared`
+
+   Notes:
+   - The `cloudflared` service is behind the Compose profile `debian`.
+   - You can also run manually with: `COMPOSE_PROFILES=debian docker compose up -d --build`
+   - Services use `restart: unless-stopped`, so they start again after reboot unless you stop them.
 
 3. Open:
 
