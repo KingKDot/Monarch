@@ -98,6 +98,11 @@ func (s *Service) ShouldRequireCaptcha(ip string, now time.Time) bool {
 	return s.cfg.RequireCaptcha && over
 }
 
+func (s *Service) NeedsCaptcha(ip string, now time.Time) bool {
+	_, over := s.burst.Current(ip, now)
+	return s.cfg.RequireCaptcha && over
+}
+
 func (s *Service) EnqueueScan(ctx context.Context, userID int64, fileHeader *multipart.FileHeader) (uuid.UUID, error) {
 	if fileHeader == nil {
 		return uuid.Nil, errors.New("missing file")

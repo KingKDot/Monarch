@@ -268,6 +268,7 @@ FROM scans WHERE id=$1`, scanID).Scan(&status, &filename, &sha, &size, &md5sum, 
 
 	r.GET("/", func(c *gin.Context) {
 		accountID, _ := c.Get("account_id")
+		requireCaptcha := cfg.Scanner.NeedsCaptcha(c.ClientIP(), time.Now())
 		var chartData template.JS
 		var recentScans []recentScan
 		if accountID != nil {
@@ -338,7 +339,7 @@ ORDER BY day
 		}
 		renderHTML(c, http.StatusOK, "index.html", gin.H{
 			"AccountID":      accountID,
-			"RequireCaptcha": cfg.Scanner.CaptchaEnabled(),
+			"RequireCaptcha": requireCaptcha,
 			"RecentScans":    recentScans,
 			"ChartData":      chartData,
 		})
@@ -529,7 +530,7 @@ ORDER BY day
 			id := c.PostForm("captcha_id")
 			sol := c.PostForm("captcha_solution")
 			if !captchaStore.Verify(id, sol, time.Now()) {
-				renderHTML(c, http.StatusBadRequest, "index.html", gin.H{"Error": "captcha failed", "AccountID": accountID})
+				renderHTML(c, http.StatusBadRequest, "index.html", gin.H{"Error": "captcha failed", "AccountID": accountID, "RequireCaptcha": true})
 				return
 			}
 		}

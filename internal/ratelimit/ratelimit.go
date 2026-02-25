@@ -37,3 +37,17 @@ func (w *WindowCounter) Increment(key string, now time.Time) (count int, over bo
 	c.count++
 	return c.count, c.count > w.threshold
 }
+
+func (w *WindowCounter) Current(key string, now time.Time) (count int, over bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	c := w.items[key]
+	if c == nil || now.After(c.resetAt) {
+		if c != nil {
+			delete(w.items, key)
+		}
+		return 0, false
+	}
+	return c.count, c.count > w.threshold
+}
