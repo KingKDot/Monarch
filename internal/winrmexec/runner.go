@@ -14,8 +14,6 @@ import (
 )
 
 type Config struct {
-	User     string
-	Pass     string
 	Port     int
 	UseHTTPS bool
 	Insecure bool
@@ -27,6 +25,11 @@ type Runner struct {
 
 type ScanRequest struct {
 	TargetIP      string
+	User          string
+	Pass          string
+	Port          int
+	UseHTTPS      bool
+	Insecure      bool
 	AVName        string
 	ScriptPath    string
 	RemoteWorkDir string
@@ -67,8 +70,23 @@ func (r *Runner) RunScan(ctx context.Context, req ScanRequest) (ScanResult, erro
 		CheckedAt:  time.Now().UTC(),
 		ScriptPath: req.ScriptPath,
 	}
-	endpoint := winrm.NewEndpoint(req.TargetIP, r.cfg.Port, r.cfg.UseHTTPS, r.cfg.Insecure, nil, nil, nil, 30*time.Second)
-	client, err := winrm.NewClient(endpoint, r.cfg.User, r.cfg.Pass)
+	if req.User == "" || req.Pass == "" {
+		err := fmt.Errorf("missing WinRM credentials for target %s", req.TargetIP)
+		result.Stderr = err.Error()
+		result.ExitCode = -1
+		return result, err
+	}
+	port := req.Port
+	if port == 0 {
+		port = r.cfg.Port
+	}
+	if port == 0 {
+		port = 5985
+	}
+	useHTTPS := req.UseHTTPS
+	insecure := req.Insecure
+	endpoint := winrm.NewEndpoint(req.TargetIP, port, useHTTPS, insecure, nil, nil, nil, 30*time.Second)
+	client, err := winrm.NewClient(endpoint, req.User, req.Pass)
 	if err != nil {
 		result.Stderr = err.Error()
 		result.ExitCode = -1

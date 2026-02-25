@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 )
 
 type Target struct {
@@ -11,6 +12,8 @@ type Target struct {
 	IP             string `json:"IP"`
 	ScriptLocation string `json:"ScriptLocation"`
 	RemoteWorkDir  string `json:"RemoteWorkDir"`
+	WinRMUser      string `json:"WinRMUser"`
+	WinRMPass      string `json:"WinRMPass"`
 }
 
 func LoadTargets(path string) ([]Target, error) {
@@ -25,6 +28,9 @@ func LoadTargets(path string) ([]Target, error) {
 	for i := range targets {
 		if targets[i].RemoteWorkDir == "" {
 			targets[i].RemoteWorkDir = "C:\\Monarch\\work"
+		}
+		if strings.TrimSpace(targets[i].WinRMUser) == "" || strings.TrimSpace(targets[i].WinRMPass) == "" {
+			return nil, fmt.Errorf("target %q (%s) is missing WinRMUser/WinRMPass", targets[i].Antivirus, targets[i].IP)
 		}
 	}
 	return targets, nil

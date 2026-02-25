@@ -33,8 +33,6 @@ type ServiceConfig struct {
 	ScanWait       time.Duration
 	WorkerCount    int
 
-	WinRMUser     string
-	WinRMPass     string
 	WinRMPort     int
 	WinRMUseHTTPS bool
 	WinRMInsecure bool
@@ -74,14 +72,8 @@ func NewService(cfg ServiceConfig) *Service {
 		cfg:    cfg,
 		queue:  make(chan job, 256),
 		closed: make(chan struct{}),
-		runner: winrmexec.NewRunner(winrmexec.Config{
-			User:     cfg.WinRMUser,
-			Pass:     cfg.WinRMPass,
-			Port:     cfg.WinRMPort,
-			UseHTTPS: cfg.WinRMUseHTTPS,
-			Insecure: cfg.WinRMInsecure,
-		}),
-		burst: ratelimit.NewWindowCounter(cfg.CaptchaWindow, cfg.CaptchaThresh),
+		runner: winrmexec.NewRunner(winrmexec.Config{}),
+		burst:  ratelimit.NewWindowCounter(cfg.CaptchaWindow, cfg.CaptchaThresh),
 	}
 
 	for i := 0; i < cfg.WorkerCount; i++ {
@@ -215,6 +207,8 @@ func (s *Service) runJob(ctx context.Context, j job) {
 			defer twg.Done()
 			res, err := s.runner.RunScan(ctx, winrmexec.ScanRequest{
 				TargetIP:      target.IP,
+				User:          target.WinRMUser,
+				Pass:          target.WinRMPass,
 				AVName:        target.Antivirus,
 				ScriptPath:    target.ScriptLocation,
 				RemoteWorkDir: target.RemoteWorkDir,
@@ -222,6 +216,9 @@ func (s *Service) runJob(ctx context.Context, j job) {
 				SHA256:        j.sha256,
 				Bytes:         fileBytes,
 				Wait:          s.cfg.ScanWait,
+				Port:          s.cfg.WinRMPort,
+				UseHTTPS:      s.cfg.WinRMUseHTTPS,
+				Insecure:      s.cfg.WinRMInsecure,
 			})
 			results[i] = targetResult{target: target, res: res, err: err}
 		}(i, target)

@@ -2,6 +2,8 @@
   {
     "Antivirus": "Defender",
     "IP": "127.0.0.1",
+    "WinRMUser": "Administrator",
+    "WinRMPass": "CHANGE_ME",
     "ScriptLocation": "C:\\Monarch\\scripts\\scan.ps1",
     "RemoteWorkDir": "C:\\Monarch\\work"
   }

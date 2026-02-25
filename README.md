@@ -36,8 +36,18 @@ On the machine/VM running Monarch, create `avs.json` next to `docker-compose.yml
 ```json
 [
   {
-    "Antivirus": "Defender",
-    "IP": "<WINDOWS_VM_IP>",
+      "Antivirus": "Defender-VM1",
+      "IP": "<WINDOWS_VM1_IP>",
+      "WinRMUser": "<VM1_USER>",
+      "WinRMPass": "<VM1_PASS>",
+      "ScriptLocation": "C:\\Monarch\\scripts\\scan.ps1",
+      "RemoteWorkDir": "C:\\Monarch\\work"
+   },
+   {
+      "Antivirus": "Defender-VM2",
+      "IP": "<WINDOWS_VM2_IP>",
+      "WinRMUser": "<VM2_USER>",
+      "WinRMPass": "<VM2_PASS>",
     "ScriptLocation": "C:\\Monarch\\scripts\\scan.ps1",
     "RemoteWorkDir": "C:\\Monarch\\work"
   }
@@ -48,9 +58,9 @@ On the machine/VM running Monarch, create `avs.json` next to `docker-compose.yml
 
 1. Copy [.env.example](.env.example) to `.env` and fill in:
 
-   - `MONARCH_WINRM_USER`
-   - `MONARCH_WINRM_PASS`
    - `MONARCH_COOKIE_SECRET`
+
+   WinRM credentials are now configured per target inside `avs.json` (`WinRMUser` / `WinRMPass`).
 
 2. Start:
 

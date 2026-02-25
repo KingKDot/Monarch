@@ -29,9 +29,7 @@ services:
       MONARCH_AV_CONFIG: "/etc/monarch/avs.json"
       MONARCH_STORAGE_DIR: "/var/lib/monarch/storage"
 
-      # REQUIRED: WinRM credentials used to connect to each Windows AV VM.
-      MONARCH_WINRM_USER: ${MONARCH_WINRM_USER}
-      MONARCH_WINRM_PASS: ${MONARCH_WINRM_PASS}
+      # Shared WinRM transport settings. Per-target credentials live in avs.json.
       MONARCH_WINRM_PORT: ${MONARCH_WINRM_PORT:-5985}
       MONARCH_WINRM_HTTPS: ${MONARCH_WINRM_HTTPS:-false}
       MONARCH_WINRM_INSECURE: ${MONARCH_WINRM_INSECURE:-true}

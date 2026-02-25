@@ -24,8 +24,6 @@ type Config struct {
 	ScanWait       time.Duration
 	WorkerCount    int
 
-	WinRMUser     string
-	WinRMPass     string
 	WinRMPort     int
 	WinRMUseHTTPS bool
 	WinRMInsecure bool
@@ -59,8 +57,6 @@ func LoadFromEnv() (Config, error) {
 	cfg.ScanWait = envDurationDefault("MONARCH_SCAN_WAIT", 15*time.Second)
 	cfg.WorkerCount = envIntDefault("MONARCH_WORKERS", 2)
 
-	cfg.WinRMUser = os.Getenv("MONARCH_WINRM_USER")
-	cfg.WinRMPass = os.Getenv("MONARCH_WINRM_PASS")
 	cfg.WinRMPort = envIntDefault("MONARCH_WINRM_PORT", 5985)
 	cfg.WinRMUseHTTPS = envBoolDefault("MONARCH_WINRM_HTTPS", false)
 	cfg.WinRMInsecure = envBoolDefault("MONARCH_WINRM_INSECURE", true)
@@ -77,9 +73,6 @@ func LoadFromEnv() (Config, error) {
 
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("MONARCH_DATABASE_URL is required")
-	}
-	if cfg.WinRMUser == "" || cfg.WinRMPass == "" {
-		return Config{}, errors.New("MONARCH_WINRM_USER and MONARCH_WINRM_PASS are required")
 	}
 	if cfg.WorkerCount < 1 {
 		cfg.WorkerCount = 1

@@ -58,8 +58,6 @@ func Run() error {
 		StorageDir:     cfg.StorageDir,
 		MaxUploadBytes: cfg.MaxUploadBytes,
 		ScanWait:       cfg.ScanWait,
-		WinRMUser:      cfg.WinRMUser,
-		WinRMPass:      cfg.WinRMPass,
 		WinRMUseHTTPS:  cfg.WinRMUseHTTPS,
 		WinRMInsecure:  cfg.WinRMInsecure,
 		WinRMPort:      cfg.WinRMPort,
