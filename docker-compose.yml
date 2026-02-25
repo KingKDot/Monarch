@@ -67,14 +67,13 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    profiles:
-      - debian
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=eyJhIjoiYzcxNzM5YmViZGM2ZjU3YjM5ZWMxNDVkMjFjNDA1NTMiLCJ0IjoiMTRlOTIxNDgtMGEzMy00NjNkLWFkZTAtZjdmNmRlYjc2MDExIiwicyI6IllUSTFOamt3WWpBdE5qYzVNaTAwTXprekxXSTFZbVl0TlRreFpUZzVNVGN4TlROaSJ9
     depends_on:
       - app
-    command: tunnel --config /etc/cloudflared/config.yml run
-    volumes:
-      - ./cloudflared:/etc/cloudflared:ro
-    restart: unless-stopped
 
 volumes:
   monarch_pg:
