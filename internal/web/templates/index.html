@@ -122,12 +122,22 @@
           if (xhr.status < 400 && xhr.responseURL) {
             window.location.href = xhr.responseURL;
           } else {
+            let serverMsg = '';
+            try {
+              const doc = new DOMParser().parseFromString(xhr.responseText || '', 'text/html');
+              const alert = doc.querySelector('.alert-error');
+              if (alert && alert.textContent) {
+                serverMsg = alert.textContent.trim();
+              }
+            } catch (_) {}
+
             btn.disabled = false;
             btn.textContent = 'Scan file';
             prog.style.display = 'none';
             lbl.textContent = 'Upload failed — try again';
             lbl.style.color = '#fca5a5';
             prog.style.display = 'block';
+            showUploadError(serverMsg || 'Upload failed — try again.');
           }
         });
         xhr.addEventListener('error', () => {
