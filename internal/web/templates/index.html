@@ -10,11 +10,40 @@
   <script>
     const MAX_UPLOAD_BYTES = 35 * 1024 * 1024;
 
+    function bindCaptchaClicks(prefix, count) {
+      const master = document.getElementById(prefix + '_captcha_master');
+      const solEl  = document.getElementById(prefix + '_captcha_solution');
+      const hintEl = document.getElementById(prefix + '_captcha_hint');
+      if (!master || !solEl) return;
+
+      const state = { points: [], count: (count || 0) };
+      solEl.value = '[]';
+      if (hintEl) hintEl.textContent = 'Clicks: 0 / ' + state.count;
+
+      master.onclick = (ev) => {
+        if (state.count <= 0) return;
+        if (state.points.length >= state.count) return;
+        const rect = master.getBoundingClientRect();
+        const rx = (ev.clientX - rect.left) / rect.width;
+        const ry = (ev.clientY - rect.top) / rect.height;
+        const nw = master.naturalWidth || rect.width;
+        const nh = master.naturalHeight || rect.height;
+        const x = Math.max(0, Math.min(Math.round(rx * nw), Math.round(nw)));
+        const y = Math.max(0, Math.min(Math.round(ry * nh), Math.round(nh)));
+        state.points.push({x, y});
+        solEl.value = JSON.stringify(state.points);
+        if (hintEl) hintEl.textContent = 'Clicks: ' + state.points.length + ' / ' + state.count;
+      };
+    }
+
     async function loadCaptcha(prefix) {
-      const res = await fetch('/captcha/new');
+      const res = await fetch('/captcha/new', { cache: 'no-store' });
       const data = await res.json();
       document.getElementById(prefix + '_captcha_id').value = data.id;
-      document.getElementById(prefix + '_captcha_img').src = '/captcha/' + data.id + '.png';
+      document.getElementById(prefix + '_captcha_solution').value = '[]';
+      document.getElementById(prefix + '_captcha_thumb').src = data.thumb_url;
+      document.getElementById(prefix + '_captcha_master').src = data.master_url;
+      bindCaptchaClicks(prefix, data.count);
     }
 
     function setupDrop(zoneId) {
@@ -115,6 +144,28 @@
       setupDrop('drop-zone');
       setupUpload();
     });
+
+    const consoleimg = {
+      load: function(e, {size: o=320, color: n="transparent"}={}) {
+        const t = new FileReader;
+        t.addEventListener("load", function() {
+          const e = "background: url('" + t.result + "') left top no-repeat; font-size: " + o + "px; background-size: contain; background-color:" + n;
+          console.log("%c     ", e)
+        }, !1),
+        fetch(e).then(e => e.blob()).then(e => {
+          if (0 === e.type.indexOf("image")) {
+            if (e.size > 8192 && navigator.userAgent.indexOf("Firefox") > 0)
+              throw new Error("Image size too big to be displayed in Firefox.");
+            return e
+          }
+          throw new Error("Valid image not found.")
+        }
+        ).then(e => t.readAsDataURL(e)).catch(e => console.warn(e.message))
+      }
+    };
+
+    // Fun console easter egg (served same-origin to avoid CORS)
+    consoleimg.load('/static/console.gif', { size: 320, color: 'transparent' });
   </script>
 </head>
 <body>
@@ -213,11 +264,17 @@
           <input type="hidden" id="scan_captcha_id" name="captcha_id" />
           <div style="margin-bottom:1rem;">
             <div class="form-label" style="margin-bottom:0.5rem;">Captcha</div>
-            <div class="captcha-row">
-              <img id="scan_captcha_img" class="captcha-img" alt="captcha" />
+            <input type="hidden" id="scan_captcha_solution" name="captcha_solution" />
+            <div class="captcha-row" style="align-items:flex-start;">
+              <div style="display:flex; flex-direction:column; gap:0.35rem;">
+                <img id="scan_captcha_thumb" class="captcha-img" alt="captcha challenge" />
+                <div id="scan_captcha_hint" class="text-muted text-small">Clicks: 0 / 0</div>
+              </div>
               <button type="button" class="btn btn-ghost" onclick="loadCaptcha('scan')" style="font-size:0.78rem; padding:0.35rem 0.75rem;">Refresh</button>
             </div>
-            <input class="input" type="text" name="captcha_solution" placeholder="Enter captcha text" style="margin-top:0.5rem;" />
+            <div style="margin-top:0.6rem;">
+              <img id="scan_captcha_master" class="captcha-img" alt="captcha image" style="width:100%; max-width:320px; height:auto; cursor:crosshair;" />
+            </div>
           </div>
           {{end}}
           <button type="submit" id="scan-btn" class="btn btn-primary btn-full" style="margin-top:0.75rem;">

@@ -3,12 +3,15 @@ module Monarch
 go 1.25.6
 
 require (
-	github.com/dchest/captcha v1.1.0
 	github.com/gin-gonic/gin v1.11.0
+	github.com/glaslos/ssdeep v0.4.0
+	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/masterzen/winrm v0.0.0-20250927112105-5f8e6c707321
+	github.com/wenlng/go-captcha/v2 v2.0.4
 	golang.org/x/crypto v0.48.0
+	golang.org/x/image v0.16.0
 )
 
 require (
@@ -22,7 +25,6 @@ require (
 	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
-	github.com/glaslos/ssdeep v0.4.0 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect

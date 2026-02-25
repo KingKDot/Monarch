@@ -6,11 +6,40 @@
   <title>Monarch — Sign up</title>
   <link rel="stylesheet" href="/static/style.css" />
   <script>
+    function bindCaptchaClicks(prefix, count) {
+      const master = document.getElementById(prefix + '_captcha_master');
+      const solEl  = document.getElementById(prefix + '_captcha_solution');
+      const hintEl = document.getElementById(prefix + '_captcha_hint');
+      if (!master || !solEl) return;
+
+      const state = { points: [], count: (count || 0) };
+      solEl.value = '[]';
+      if (hintEl) hintEl.textContent = 'Clicks: 0 / ' + state.count;
+
+      master.onclick = (ev) => {
+        if (state.count <= 0) return;
+        if (state.points.length >= state.count) return;
+        const rect = master.getBoundingClientRect();
+        const rx = (ev.clientX - rect.left) / rect.width;
+        const ry = (ev.clientY - rect.top) / rect.height;
+        const nw = master.naturalWidth || rect.width;
+        const nh = master.naturalHeight || rect.height;
+        const x = Math.max(0, Math.min(Math.round(rx * nw), Math.round(nw)));
+        const y = Math.max(0, Math.min(Math.round(ry * nh), Math.round(nh)));
+        state.points.push({x, y});
+        solEl.value = JSON.stringify(state.points);
+        if (hintEl) hintEl.textContent = 'Clicks: ' + state.points.length + ' / ' + state.count;
+      };
+    }
+
     async function loadCaptcha(prefix) {
-      const res = await fetch('/captcha/new');
+      const res = await fetch('/captcha/new', { cache: 'no-store' });
       const data = await res.json();
       document.getElementById(prefix + '_captcha_id').value = data.id;
-      document.getElementById(prefix + '_captcha_img').src = '/captcha/' + data.id + '.png';
+      document.getElementById(prefix + '_captcha_solution').value = '[]';
+      document.getElementById(prefix + '_captcha_thumb').src = data.thumb_url;
+      document.getElementById(prefix + '_captcha_master').src = data.master_url;
+      bindCaptchaClicks(prefix, data.count);
     }
   </script>
 </head>
@@ -50,11 +79,17 @@
         <div class="form-group">
           <label class="form-label">Captcha</label>
           <input type="hidden" id="signup_captcha_id" name="captcha_id" />
+          <input type="hidden" id="signup_captcha_solution" name="captcha_solution" />
           <div class="captcha-row">
-            <img id="signup_captcha_img" class="captcha-img" alt="captcha" />
+            <div style="display:flex; flex-direction:column; gap:0.35rem;">
+              <img id="signup_captcha_thumb" class="captcha-img" alt="captcha challenge" />
+              <div id="signup_captcha_hint" class="text-muted text-small">Clicks: 0 / 0</div>
+            </div>
             <button type="button" class="btn btn-ghost" onclick="loadCaptcha('signup')" style="font-size:0.78rem;">Refresh</button>
           </div>
-          <input class="input" type="text" name="captcha_solution" placeholder="Enter captcha text" />
+          <div style="margin-top:0.6rem;">
+            <img id="signup_captcha_master" class="captcha-img" alt="captcha image" style="width:100%; max-width:320px; height:auto; cursor:crosshair;" />
+          </div>
         </div>
         {{end}}
         <button type="submit" class="btn btn-primary btn-full">Create account</button>

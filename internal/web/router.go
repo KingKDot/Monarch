@@ -15,7 +15,6 @@ import (
 	"Monarch/internal/ratelimit"
 	"Monarch/internal/scan"
 
-	"github.com/dchest/captcha"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -51,6 +50,11 @@ func NewRouter(cfg RouterConfig) (http.Handler, error) {
 	}
 
 	tmpl, err := template.ParseFS(templatesFS, "templates/*.html")
+	if err != nil {
+		return nil, err
+	}
+
+	captchaStore, err := newClickCaptchaStore()
 	if err != nil {
 		return nil, err
 	}
@@ -217,6 +221,16 @@ FROM scans WHERE id=$1`, scanID).Scan(&status, &filename, &sha, &size, &md5sum, 
 		}
 		c.Writer.Write(b)
 	})
+	r.GET("/static/console.gif", func(c *gin.Context) {
+		c.Header("Content-Type", "image/gif")
+		c.Header("Cache-Control", "public, max-age=86400")
+		b, err := templatesFS.ReadFile("assets/console.gif")
+		if err != nil {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		c.Writer.Write(b)
+	})
 	r.MaxMultipartMemory = cfg.MaxUploadBytes
 
 	// Enforce max request size (defense-in-depth in addition to per-file checks).
@@ -353,7 +367,7 @@ ORDER BY day
 		if requireCaptcha {
 			id := c.PostForm("captcha_id")
 			sol := c.PostForm("captcha_solution")
-			if !captcha.VerifyString(id, sol) {
+			if !captchaStore.Verify(id, sol, time.Now()) {
 				renderHTML(c, http.StatusBadRequest, "signup.html", gin.H{"Error": "captcha failed", "RequireCaptcha": cfg.RequireCaptcha})
 				return
 			}
@@ -395,7 +409,7 @@ ORDER BY day
 		if requireCaptcha {
 			id := c.PostForm("captcha_id")
 			sol := c.PostForm("captcha_solution")
-			if !captcha.VerifyString(id, sol) {
+			if !captchaStore.Verify(id, sol, time.Now()) {
 				renderHTML(c, http.StatusBadRequest, "login.html", gin.H{"Error": "captcha failed", "RequireCaptcha": cfg.RequireCaptcha})
 				return
 			}
@@ -432,20 +446,61 @@ ORDER BY day
 	})
 
 	r.GET("/captcha/new", func(c *gin.Context) {
-		c.JSON(200, gin.H{"id": captcha.New()})
-	})
-	r.GET("/captcha/:id.png", func(c *gin.Context) {
-		id := c.Param("id")
-		if id == "" {
-			id = c.Param("id.png")
-		}
-		id = strings.TrimSuffix(id, ".png")
-		if id == "" {
-			c.Status(http.StatusNotFound)
+		now := time.Now()
+		id, _, _, count, err := captchaStore.New(now)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "captcha generate failed"})
 			return
 		}
 		c.Header("Cache-Control", "no-store")
-		captcha.WriteImage(c.Writer, id, 240, 80)
+		c.JSON(200, gin.H{
+			"id":         id,
+			"count":      count,
+			"master_url": "/captcha/master/" + id,
+			"thumb_url":  "/captcha/thumb/" + id,
+		})
+	})
+
+	servePNG := func(c *gin.Context, b []byte) {
+		c.Header("Cache-Control", "no-store")
+		c.Header("Content-Type", "image/png")
+		c.Writer.WriteHeader(200)
+		_, _ = c.Writer.Write(b)
+	}
+
+	// Back-compat: old UI used /captcha/<id>.png
+	r.GET("/captcha/:id.png", func(c *gin.Context) {
+		id := c.Param("id")
+		if id == "" {
+			// Gin may name the param "id.png" when the route token is ":id.png".
+			id = c.Param("id.png")
+		}
+		id = strings.TrimSuffix(id, ".png")
+		b, ok := captchaStore.GetMaster(id, time.Now())
+		if !ok {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		servePNG(c, b)
+	})
+	// New: click captcha master + thumb images (avoid Gin ":id.png" param names).
+	r.GET("/captcha/master/:id", func(c *gin.Context) {
+		id := strings.TrimSuffix(c.Param("id"), ".png")
+		b, ok := captchaStore.GetMaster(id, time.Now())
+		if !ok {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		servePNG(c, b)
+	})
+	r.GET("/captcha/thumb/:id", func(c *gin.Context) {
+		id := strings.TrimSuffix(c.Param("id"), ".png")
+		b, ok := captchaStore.GetThumb(id, time.Now())
+		if !ok {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		servePNG(c, b)
 	})
 
 	authRequired := func(c *gin.Context) {
@@ -473,7 +528,7 @@ ORDER BY day
 		if cfg.Scanner.ShouldRequireCaptcha(ip, time.Now()) {
 			id := c.PostForm("captcha_id")
 			sol := c.PostForm("captcha_solution")
-			if !captcha.VerifyString(id, sol) {
+			if !captchaStore.Verify(id, sol, time.Now()) {
 				renderHTML(c, http.StatusBadRequest, "index.html", gin.H{"Error": "captcha failed", "AccountID": accountID})
 				return
 			}
@@ -608,7 +663,8 @@ ORDER BY day
 			var raw any
 			var updated time.Time
 			_ = rows.Scan(&avName, &st, &deleted, &raw, &updated)
-			out = append(out, gin.H{"av": avName, "status": st, "deleted": deleted, "detection": detectionFromRaw(raw), "raw": raw, "updated_at": updated})
+			// Don't expose raw_json publicly; it may contain internal IPs, paths, stdout/stderr.
+			out = append(out, gin.H{"av": avName, "status": st, "deleted": deleted, "detection": detectionFromRaw(raw), "updated_at": updated})
 		}
 		ss := ""
 		if ssdeep != nil {
@@ -654,6 +710,19 @@ ORDER BY day
 				return
 			}
 			_, _ = cfg.Database.Exec(c, `UPDATE users SET credits_balance = GREATEST(0, credits_balance + $2) WHERE account_id=$1`, acct, delta)
+			c.Redirect(http.StatusSeeOther, "/admin/")
+		})
+
+		admin.POST("/user/:account/delete", func(c *gin.Context) {
+			acct := c.Param("account")
+			acct = strings.TrimSpace(acct)
+			if acct == "" {
+				c.Redirect(http.StatusSeeOther, "/admin/")
+				return
+			}
+			// Cascades to scans + scan_results via FK constraints.
+			_, _ = cfg.Database.Exec(c, `DELETE FROM users WHERE account_id=$1`, acct)
+			clearCookie(c)
 			c.Redirect(http.StatusSeeOther, "/admin/")
 		})
 

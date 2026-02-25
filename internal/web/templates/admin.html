@@ -154,6 +154,9 @@
                 <input class="input" type="text" name="delta" placeholder="Δ credits (e.g. 10 or -5)" style="height:30px; width:175px; font-size:0.78rem;" />
                 <button type="submit" class="btn btn-ghost" style="font-size:0.78rem;">Apply</button>
               </form>
+              <form method="post" action="/admin/user/{{.Account}}/delete" onsubmit="return confirm('Delete account {{.Account}}? This will permanently remove the user and all scans.');" style="display:inline-flex; gap:0.35rem; align-items:center; margin-left:0.35rem;">
+                <button type="submit" class="btn btn-ghost" style="font-size:0.78rem;">Delete</button>
+              </form>
             </td>
           </tr>
           {{end}}
