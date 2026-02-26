@@ -6,7 +6,7 @@
       <span class="{{if eq .Status "malware"}}badge badge-malware{{else if eq .Status "clean"}}badge badge-clean{{else if eq .Status "error"}}badge badge-error{{else}}badge badge-default{{end}}">{{.Status}}</span>
     </td>
     <td>{{if .Deleted}}{{.Deleted}}{{else}}&mdash;{{end}}</td>
-    <td class="td-dim">{{.Updated}}</td>
+    <td class="td-dim">{{.Updated.Format "Jan 2, 2006 3:04 PM"}}</td>
   </tr>
   {{end}}
 </tbody>

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Monarch</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css?v=20260226" />
   <script>
     function isTerminal(s) { return s==='clean'||s==='malware'||s==='error'; }
     function dotClass(s) {
@@ -42,7 +42,16 @@
       if (!iso) return '';
       const dt = new Date(iso);
       if (Number.isNaN(dt.getTime())) return (iso || '').replace('T',' ').slice(0,19);
-      return dt.toLocaleString();
+      const parts = new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      }).formatToParts(dt);
+      const get = (type) => (parts.find(p => p.type === type) || {}).value || '';
+      return `${get('month')} ${get('day')}, ${get('year')} ${get('hour')}:${get('minute')} ${get('dayPeriod')}`;
     }
     function renderResults(results) {
       const body = document.getElementById('results-body');
@@ -122,9 +131,10 @@
       pollScan(id);
       window.__poll = setInterval(() => pollScan(id), 1000);
     }
+
   </script>
 </head>
-<body>
+<body class="page-scan">
 
 <div id="m-topbar"><div id="m-topbar-inner"></div></div>
 
@@ -186,7 +196,7 @@
             </td>
             <td class="td-name">{{if .Detection}}{{.Detection}}{{else}}&mdash;{{end}}</td>
             <td>{{if .Deleted}}{{.Deleted}}{{else}}&mdash;{{end}}</td>
-            <td class="td-dim">{{.Updated}}</td>
+            <td class="td-dim">{{.Updated.Format "Jan 2, 2006 3:04 PM"}}</td>
           </tr>
           {{end}}
         </tbody>

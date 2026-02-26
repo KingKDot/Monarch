@@ -149,7 +149,7 @@ ORDER BY s.created_at DESC LIMIT 20`, accountID)
 			var created time.Time
 			var raw any
 			_ = rows.Scan(&it.ID, &it.Status, &it.Filename, &it.SHA256, &created, &raw)
-			it.Created = created.Format("Jan 2, 2006 15:04")
+			it.Created = created.Format("Jan 2, 2006 3:04 PM")
 			it.Detection = detectionFromRaw(raw)
 			recentScans = append(recentScans, it)
 		}
