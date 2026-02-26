@@ -65,7 +65,7 @@ type remoteScanOutput struct {
 	Deleted       bool            `json:"deleted"`
 	FileExists    bool            `json:"file_exists"`
 	EventDetected bool            `json:"event_detected"`
-	EventMessage  string          `json:"event_message"`
+	EventMessage  json.RawMessage `json:"event_message"`
 	ThreatName    string          `json:"threat_name"`
 	ScriptJSON    json.RawMessage `json:"script_json"`
 }
@@ -165,10 +165,30 @@ func (r *Runner) RunScan(ctx context.Context, req ScanRequest) (ScanResult, erro
 	result.Deleted = remote.Deleted
 	result.FileExists = remote.FileExists
 	result.EventDetected = remote.EventDetected
-	result.EventMessage = remote.EventMessage
+	result.EventMessage = normalizeEventMessage(remote.EventMessage)
 	result.ThreatName = remote.ThreatName
 	result.ScriptJSON = remote.ScriptJSON
 	return result, nil
+}
+
+func normalizeEventMessage(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+
+	var asString string
+	if err := json.Unmarshal(raw, &asString); err == nil {
+		return strings.TrimSpace(asString)
+	}
+
+	var asObject struct {
+		Value string `json:"value"`
+	}
+	if err := json.Unmarshal(raw, &asObject); err == nil {
+		return strings.TrimSpace(asObject.Value)
+	}
+
+	return strings.TrimSpace(string(raw))
 }
 
 func readRemoteOutputFile(ctx context.Context, client *winrm.Client, path string) (string, error) {
