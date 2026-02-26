@@ -16,14 +16,14 @@ RUN go build -trimpath -ldflags="-s -w" -o /out/monarch .
 FROM alpine:3.21
 
 RUN addgroup -S monarch && adduser -S -G monarch monarch \
-  && apk add --no-cache ca-certificates tzdata
+  && apk add --no-cache ca-certificates tzdata su-exec
 
 WORKDIR /app
 
 COPY --from=build /out/monarch /app/monarch
-
-USER monarch
+COPY scripts/docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 8080
 
-ENTRYPOINT ["/app/monarch"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
