@@ -141,9 +141,9 @@
   </div>
 </nav>
 
-<main class="main">
+<main class="main scan-page">
 
-  <div class="card fade" style="overflow:hidden;">
+  <div class="card fade scan-panel">
     <div class="card-header">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
       Scan result
@@ -159,43 +159,12 @@
     </div>
   </div>
 
-  <div class="card fade" style="overflow:hidden;">
-    <div class="card-header">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>
-      File details
-    </div>
-    <div style="overflow-x:auto;">
-      <table class="data-table">
-        <tbody>
-          <tr><th>File name</th><td class="td-name">{{.Filename}}</td></tr>
-          <tr><th>File size</th><td class="td-mono">{{.FileSize}} bytes</td></tr>
-          <tr><th>Analysis date</th><td class="td-dim">{{.CreatedAt.Format "2006-01-02 | 15:04:05"}}</td></tr>
-          <tr><th>CRC32</th><td class="td-mono">{{if .CRC32}}{{.CRC32}}{{else}}N/A{{end}}</td></tr>
-          <tr><th>MD5</th><td class="td-mono">{{if .MD5}}{{.MD5}}{{else}}N/A{{end}}</td></tr>
-          <tr><th>SHA-1</th><td class="td-mono">{{if .SHA1}}{{.SHA1}}{{else}}N/A{{end}}</td></tr>
-          <tr><th>SHA-2</th><td class="td-mono">{{.SHA256}}</td></tr>
-          <tr><th>SSDEEP</th><td class="td-mono">{{if .SSDEEP}}{{.SSDEEP}}{{else}}N/A{{end}}</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  {{if and (ne .Status "clean") (ne .Status "malware") (ne .Status "error")}}
-  <div id="scan-msg" class="scan-banner fade">
-    <span class="spinner"></span>
-    <div>
-      <div class="scan-banner-text">Scan in progress</div>
-      <div class="scan-banner-sub">Results update automatically</div>
-    </div>
-  </div>
-  {{end}}
-
-  <div class="card fade" style="overflow:hidden;">
+  <div class="card fade scan-panel">
     <div class="card-header">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
       AV Results
     </div>
-    <div class="results-scroll">
+    <div class="results-scroll panel-scroll">
       <table class="data-table">
         <thead>
           <tr>
@@ -224,6 +193,37 @@
       </table>
     </div>
   </div>
+
+  <div class="card fade scan-panel">
+    <div class="card-header">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>
+      File details
+    </div>
+    <div class="details-scroll panel-scroll">
+      <table class="data-table details-table">
+        <tbody>
+          <tr><th>File name</th><td class="td-name">{{.Filename}}</td></tr>
+          <tr><th>File size</th><td class="td-mono">{{.FileSize}} bytes</td></tr>
+          <tr><th>Analysis date</th><td class="td-dim">{{.CreatedAt.Format "2006-01-02 | 15:04:05"}}</td></tr>
+          <tr><th>CRC32</th><td class="td-mono">{{if .CRC32}}{{.CRC32}}{{else}}N/A{{end}}</td></tr>
+          <tr><th>MD5</th><td class="td-mono">{{if .MD5}}{{.MD5}}{{else}}N/A{{end}}</td></tr>
+          <tr><th>SHA-1</th><td class="td-mono">{{if .SHA1}}{{.SHA1}}{{else}}N/A{{end}}</td></tr>
+          <tr><th>SHA-2</th><td class="td-mono">{{.SHA256}}</td></tr>
+          <tr><th>SSDEEP</th><td class="td-mono">{{if .SSDEEP}}{{.SSDEEP}}{{else}}N/A{{end}}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {{if and (ne .Status "clean") (ne .Status "malware") (ne .Status "error")}}
+  <div id="scan-msg" class="scan-banner fade">
+    <span class="spinner"></span>
+    <div>
+      <div class="scan-banner-text">Scan in progress</div>
+      <div class="scan-banner-sub">Results update automatically</div>
+    </div>
+  </div>
+  {{end}}
 
 </main>
 

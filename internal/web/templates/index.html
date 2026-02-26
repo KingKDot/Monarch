@@ -350,7 +350,15 @@
           plugins: { legend: { display: false } },
           scales: {
             x: { offset: true, ticks: { color: labelColor, padding: 6 }, grid: { color: gridColor } },
-            y: { ticks: { color: labelColor }, grid: { color: gridColor } }
+            y: {
+              beginAtZero: true,
+              ticks: {
+                color: labelColor,
+                precision: 0,
+                callback: (value) => Number.isInteger(value) ? value : ''
+              },
+              grid: { color: gridColor }
+            }
           }
         }
       });
@@ -377,7 +385,15 @@
           plugins: { legend: { display: false } },
           scales: {
             x: { offset: true, ticks: { color: labelColor, maxRotation: 0, minRotation: 0, padding: 6 }, grid: { color: gridColor } },
-            y: { ticks: { color: labelColor }, grid: { color: gridColor } }
+            y: {
+              beginAtZero: true,
+              ticks: {
+                color: labelColor,
+                precision: 0,
+                callback: (value) => Number.isInteger(value) ? value : ''
+              },
+              grid: { color: gridColor }
+            }
           }
         }
       });
