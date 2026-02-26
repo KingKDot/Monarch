@@ -142,11 +142,19 @@ func (r *Runner) RunScan(ctx context.Context, req ScanRequest) (ScanResult, erro
 
 	remote, parseErr := parseRemoteScanOutput(stdout)
 	if parseErr != nil {
+		log.Printf("winrm parse debug (%s @ %s): primary stdout parse failed: %v", req.AVName, req.TargetIP, parseErr)
+		log.Printf("winrm parse debug (%s @ %s): primary stdout payload:\n%s", req.AVName, req.TargetIP, stdout)
 		fallbackStdout, fallbackErr := readRemoteOutputFile(ctx, client, scriptOut)
+		if fallbackErr != nil {
+			log.Printf("winrm parse debug (%s @ %s): fallback read failed: %v", req.AVName, req.TargetIP, fallbackErr)
+		} else {
+			log.Printf("winrm parse debug (%s @ %s): fallback script.json payload:\n%s", req.AVName, req.TargetIP, fallbackStdout)
+		}
 		if fallbackErr == nil {
 			remote, parseErr = parseRemoteScanOutput(fallbackStdout)
 		}
 		if parseErr != nil {
+			log.Printf("winrm parse debug (%s @ %s): fallback parse failed: %v", req.AVName, req.TargetIP, parseErr)
 			if result.Stderr != "" {
 				result.Stderr += "; "
 			}
