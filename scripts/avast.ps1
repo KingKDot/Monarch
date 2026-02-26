@@ -116,6 +116,15 @@ $result = [ordered]@{
 $scanStart = Get-Date
 
 try {
+	$outDir = Split-Path -Parent $OutputFile
+	if ($outDir -and !(Test-Path -LiteralPath $outDir)) {
+		New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+	}
+} catch {
+	$result.error = $_.ToString()
+}
+
+try {
 	if (!(Test-Path -LiteralPath $InputFile)) {
 		if ($FromStdin) {
 			$stdin = [Console]::OpenStandardInput()
@@ -172,5 +181,5 @@ $out = [ordered]@{
 }
 
 $json = $out | ConvertTo-Json -Compress
-$json | Set-Content -LiteralPath $OutputFile -Encoding UTF8
+Write-Json $out $OutputFile
 $json

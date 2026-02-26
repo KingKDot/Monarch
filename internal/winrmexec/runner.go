@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -35,6 +36,7 @@ type ScanRequest struct {
 	RemoteWorkDir string
 	ScanID        string
 	SHA256        string
+	OriginalName  string
 	Bytes         []byte
 	Wait          time.Duration
 }
@@ -107,7 +109,8 @@ func (r *Runner) RunScan(ctx context.Context, req ScanRequest) (ScanResult, erro
 		return result, err
 	}
 	remoteDir = remoteDir + "\\" + req.ScanID
-	remotePath := remoteDir + "\\" + req.SHA256
+	remoteName := req.SHA256 + safeFileExtension(req.OriginalName)
+	remotePath := remoteDir + "\\" + remoteName
 	scriptOut := remoteDir + "\\script.json"
 	result.RemoteDir = remoteDir
 	result.RemotePath = remotePath
@@ -186,4 +189,21 @@ func quoteCmdArg(s string) string {
 func escapePSSingleQuoted(s string) string {
 	// Escape for single-quoted PowerShell string literals.
 	return strings.ReplaceAll(s, "'", "''")
+}
+
+func safeFileExtension(name string) string {
+	ext := strings.TrimSpace(filepath.Ext(strings.TrimSpace(name)))
+	if ext == "" || ext == "." {
+		return ""
+	}
+	if len(ext) > 16 {
+		return ""
+	}
+	for _, ch := range ext[1:] {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '-' {
+			continue
+		}
+		return ""
+	}
+	return ext
 }

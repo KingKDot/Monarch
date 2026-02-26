@@ -62,6 +62,7 @@ type job struct {
 	userID    int64
 	sha256    string
 	localPath string
+	filename  string
 }
 
 func NewService(cfg ServiceConfig) *Service {
@@ -168,7 +169,7 @@ func (s *Service) EnqueueScan(ctx context.Context, userID int64, fileHeader *mul
 	}
 
 	select {
-	case s.queue <- job{scanID: scanID, userID: userID, sha256: sha, localPath: localPath}:
+	case s.queue <- job{scanID: scanID, userID: userID, sha256: sha, localPath: localPath, filename: name}:
 		return scanID, nil
 	case <-ctx.Done():
 		return uuid.Nil, ctx.Err()
@@ -203,12 +204,12 @@ func (s *Service) runJob(ctx context.Context, j job) {
 		res    winrmexec.ScanResult
 		err    error
 	}
-	results := make([]targetResult, len(s.cfg.AVTargets))
+	results := make(chan targetResult, len(s.cfg.AVTargets))
 	var twg sync.WaitGroup
-	for i, target := range s.cfg.AVTargets {
+	for _, target := range s.cfg.AVTargets {
 		_, _ = s.cfg.Database.Exec(ctx, `UPDATE scan_results SET status='scanning', updated_at=now() WHERE scan_id=$1 AND av_name=$2`, j.scanID, target.Antivirus)
 		twg.Add(1)
-		go func(i int, target av.Target) {
+		go func(target av.Target) {
 			defer twg.Done()
 			res, err := s.runner.RunScan(ctx, winrmexec.ScanRequest{
 				TargetIP:      target.IP,
@@ -219,18 +220,22 @@ func (s *Service) runJob(ctx context.Context, j job) {
 				RemoteWorkDir: target.RemoteWorkDir,
 				ScanID:        j.scanID.String(),
 				SHA256:        j.sha256,
+				OriginalName:  j.filename,
 				Bytes:         fileBytes,
 				Wait:          s.cfg.ScanWait,
 				Port:          s.cfg.WinRMPort,
 				UseHTTPS:      s.cfg.WinRMUseHTTPS,
 				Insecure:      s.cfg.WinRMInsecure,
 			})
-			results[i] = targetResult{target: target, res: res, err: err}
-		}(i, target)
+			results <- targetResult{target: target, res: res, err: err}
+		}(target)
 	}
-	twg.Wait()
+	go func() {
+		twg.Wait()
+		close(results)
+	}()
 
-	for _, r := range results {
+	for r := range results {
 		status := "clean"
 		if r.err != nil {
 			status = "error"
