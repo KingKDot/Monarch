@@ -58,6 +58,45 @@ On the machine/VM running Monarch, create `avs.json` next to `docker-compose.yml
 ]
 ```
 
+### Optional: bootstrap target VMs from `avs.json`
+
+You can automate WinRM setup checks and script deployment with:
+
+- `python -m pip install pywinrm`
+- `python scripts/bootstrap_winrm_targets.py --config avs.json --allow-unencrypted --allow-basic-auth`
+
+What it does per target:
+
+- Connects to the VM using `IP`, `WinRMUser`, `WinRMPass`
+- Enables/starts WinRM and enables Windows Remote Management firewall rules
+- Creates `ScriptLocation` parent directory and `RemoteWorkDir`
+- Finds a local `.ps1` with the exact same filename as `ScriptLocation`
+- Serves that file from a temporary local HTTP server so the VM downloads it
+- Falls back to chunked WinRM transfer automatically if HTTP download fails
+
+Dry-run (no remote changes):
+
+- `python scripts/bootstrap_winrm_targets.py --config avs.json --dry-run`
+
+Transfer mode options:
+
+- `--transfer chunked` (default): chunked transfer (no HTTP server)
+- `--transfer auto`: HTTP download first, then chunked fallback
+- `--transfer http`: only HTTP download
+
+Transient WinRM drops can be retried automatically:
+
+- `--winrm-retries 3`
+
+Bootstrap mode options:
+
+- `--bootstrap-mode minimal` (default): only apply WSMan toggles and ensure directories
+- `--bootstrap-mode full`: also runs `Enable-PSRemoting` and WinRM firewall/service setup
+
+If auto-detected local IP is not reachable by VMs, set it manually:
+
+- `python scripts/bootstrap_winrm_targets.py --config avs.json --download-host <YOUR_LAN_IP>`
+
 ## 3) Run Monarch + Postgres via Docker
 
 1. Copy [.env.example](.env.example) to `.env` and fill in:
