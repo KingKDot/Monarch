@@ -94,12 +94,17 @@ function Find-AvastDetection([string]$Path, [string]$InputPath, [datetime]$Start
 		}
 
 		$rest = $Matches['rest']
+		$matchedTs = $Matches['ts']
 		if ($rest -notmatch '^(?<path>[A-Za-z]:\\.+?)\s+\[(?<dtype>[^\]]+)\]\s+(?<threat>.+?)\s*\((?<code>-?\d+)\)\s*$') {
 			$formatMiss++
 			continue
 		}
 
-		$loggedPath = $Matches['path']
+		$matchedPath = $Matches['path']
+		$matchedType = $Matches['dtype']
+		$matchedThreat = $Matches['threat']
+		$matchedCode = $Matches['code']
+		$loggedPath = $matchedPath
 		$loggedNorm = Normalize-PathForCompare $loggedPath
 		if ($loggedNorm -ne $inputNorm) {
 			$pathMiss++
@@ -113,16 +118,16 @@ function Find-AvastDetection([string]$Path, [string]$InputPath, [datetime]$Start
 				$followUp = $nextLine.Trim()
 			}
 		}
-		Write-TraceLog "hit ts=$($Matches['ts']) path=$loggedPath dtype=$($Matches['dtype']) threat=$($Matches['threat']) code=$($Matches['code']) follow_up=$followUp scanned=$scanned"
+		Write-TraceLog "hit ts=$matchedTs path=$matchedPath dtype=$matchedType threat=$matchedThreat code=$matchedCode follow_up=$followUp scanned=$scanned"
 
 		return [ordered]@{
 			line = $line
 			follow_up = $followUp
 			timestamp = $entryTime
-			logged_path = $loggedPath
-			detection_type = $Matches['dtype']
-			threat_name = $Matches['threat']
-			result_code = $Matches['code']
+			logged_path = $matchedPath
+			detection_type = $matchedType
+			threat_name = $matchedThreat
+			result_code = $matchedCode
 		}
 	}
 

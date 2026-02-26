@@ -142,11 +142,17 @@ func (r *Runner) RunScan(ctx context.Context, req ScanRequest) (ScanResult, erro
 
 	remote, parseErr := parseRemoteScanOutput(stdout)
 	if parseErr != nil {
-		if result.Stderr != "" {
-			result.Stderr += "; "
+		fallbackStdout, fallbackErr := readRemoteOutputFile(ctx, client, scriptOut)
+		if fallbackErr == nil {
+			remote, parseErr = parseRemoteScanOutput(fallbackStdout)
 		}
-		result.Stderr += "invalid scan output: " + parseErr.Error()
-		return result, parseErr
+		if parseErr != nil {
+			if result.Stderr != "" {
+				result.Stderr += "; "
+			}
+			result.Stderr += "invalid scan output: " + parseErr.Error()
+			return result, parseErr
+		}
 	}
 	result.Deleted = remote.Deleted
 	result.FileExists = remote.FileExists
@@ -155,6 +161,21 @@ func (r *Runner) RunScan(ctx context.Context, req ScanRequest) (ScanResult, erro
 	result.ThreatName = remote.ThreatName
 	result.ScriptJSON = remote.ScriptJSON
 	return result, nil
+}
+
+func readRemoteOutputFile(ctx context.Context, client *winrm.Client, path string) (string, error) {
+	command := fmt.Sprintf("powershell -NoProfile -NonInteractive -Command \"Get-Content -LiteralPath '%s' -Raw -Encoding UTF8\"", escapePSSingleQuoted(path))
+	stdout, stderr, exitCode, err := runPS(ctx, client, command, nil)
+	if err != nil {
+		return "", err
+	}
+	if exitCode != 0 {
+		if strings.TrimSpace(stderr) == "" {
+			stderr = fmt.Sprintf("remote output read failed (exit=%d)", exitCode)
+		}
+		return "", fmt.Errorf("%s", stderr)
+	}
+	return stdout, nil
 }
 
 func parseRemoteScanOutput(stdout string) (remoteScanOutput, error) {

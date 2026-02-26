@@ -239,7 +239,7 @@ func (s *Service) runJob(ctx context.Context, j job) {
 		status := "clean"
 		if r.err != nil {
 			status = "error"
-		} else if r.res.Deleted {
+		} else if r.res.Deleted || r.res.EventDetected || strings.TrimSpace(r.res.ThreatName) != "" {
 			status = "malware"
 			overall = "malware"
 		}
