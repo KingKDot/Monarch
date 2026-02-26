@@ -61,6 +61,15 @@ type ScanResult struct {
 	ScriptPath    string          `json:"script_path"`
 }
 
+type remoteScanOutput struct {
+	Deleted       bool            `json:"deleted"`
+	FileExists    bool            `json:"file_exists"`
+	EventDetected bool            `json:"event_detected"`
+	EventMessage  string          `json:"event_message"`
+	ThreatName    string          `json:"threat_name"`
+	ScriptJSON    json.RawMessage `json:"script_json"`
+}
+
 func NewRunner(cfg Config) *Runner {
 	return &Runner{cfg: cfg}
 }
@@ -131,24 +140,57 @@ func (r *Runner) RunScan(ctx context.Context, req ScanRequest) (ScanResult, erro
 		return result, fmt.Errorf("remote powershell failed (exit=%d)", exitCode)
 	}
 
-	// stdout should be JSON from remoteOut.
-	var remote struct {
-		Deleted       bool            `json:"deleted"`
-		FileExists    bool            `json:"file_exists"`
-		EventDetected bool            `json:"event_detected"`
-		EventMessage  string          `json:"event_message"`
-		ThreatName    string          `json:"threat_name"`
-		ScriptJSON    json.RawMessage `json:"script_json"`
+	remote, parseErr := parseRemoteScanOutput(stdout)
+	if parseErr != nil {
+		if result.Stderr != "" {
+			result.Stderr += "; "
+		}
+		result.Stderr += "invalid scan output: " + parseErr.Error()
+		return result, parseErr
 	}
-	if uerr := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &remote); uerr == nil {
-		result.Deleted = remote.Deleted
-		result.FileExists = remote.FileExists
-		result.EventDetected = remote.EventDetected
-		result.EventMessage = remote.EventMessage
-		result.ThreatName = remote.ThreatName
-		result.ScriptJSON = remote.ScriptJSON
-	}
+	result.Deleted = remote.Deleted
+	result.FileExists = remote.FileExists
+	result.EventDetected = remote.EventDetected
+	result.EventMessage = remote.EventMessage
+	result.ThreatName = remote.ThreatName
+	result.ScriptJSON = remote.ScriptJSON
 	return result, nil
+}
+
+func parseRemoteScanOutput(stdout string) (remoteScanOutput, error) {
+	var out remoteScanOutput
+	candidate := strings.TrimSpace(strings.TrimPrefix(stdout, "\ufeff"))
+	if candidate != "" {
+		if err := json.Unmarshal([]byte(candidate), &out); err == nil {
+			return out, nil
+		}
+	}
+
+	lines := strings.Split(candidate, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(strings.TrimPrefix(lines[i], "\ufeff"))
+		if line == "" {
+			continue
+		}
+		if err := json.Unmarshal([]byte(line), &out); err == nil {
+			return out, nil
+		}
+	}
+
+	start := strings.Index(candidate, "{")
+	end := strings.LastIndex(candidate, "}")
+	if start >= 0 && end > start {
+		snippet := strings.TrimSpace(strings.TrimPrefix(candidate[start:end+1], "\ufeff"))
+		if err := json.Unmarshal([]byte(snippet), &out); err == nil {
+			return out, nil
+		}
+	}
+
+	trimmed := candidate
+	if len(trimmed) > 240 {
+		trimmed = trimmed[:240] + "..."
+	}
+	return out, fmt.Errorf("unable to parse JSON from stdout: %q", trimmed)
 }
 
 func cleanupRemoteDir(ctx context.Context, client *winrm.Client, remoteDir string) {
